@@ -23,8 +23,41 @@ async function shrinkCover(blob: Blob): Promise<Blob> {
   }
 }
 
-/** Read an EPUB's title/author/cover, upload it, and add it to the shared library. */
-export async function uploadBook(file: File, readerId: string): Promise<Book> {
+/** Upload to a signed URL with real progress (the Supabase client doesn't report progress). */
+async function uploadWithProgress(path: string, file: Blob, contentType: string, onProgress?: (f: number) => void) {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (error || !data) throw new Error(`Upload failed: ${error?.message ?? "no upload link"}`);
+  const { data: auth } = await supabase.auth.getSession();
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", data.signedUrl);
+    xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
+    if (auth.session) xhr.setRequestHeader("authorization", `Bearer ${auth.session.access_token}`);
+    xhr.setRequestHeader("x-upsert", "false");
+    xhr.setRequestHeader("content-type", contentType);
+    xhr.setRequestHeader("cache-control", "max-age=3600");
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`)));
+    xhr.onerror = () => reject(new Error("Upload failed. Check your connection."));
+    xhr.send(file);
+  });
+}
+
+export type UploadPreview = { title: string; author: string | null; cover: string | null };
+
+/**
+ * Read an EPUB's title/author/cover, upload it, and add it to the shared library.
+ * Resolves to null if you chose not to add a duplicate.
+ */
+export async function uploadBook(
+  file: File,
+  readerId: string,
+  hooks: {
+    onPreview?: (p: UploadPreview) => void;
+    onProgress?: (fraction: number) => void;
+    confirmDuplicate?: (existing: Book) => Promise<boolean>;
+  } = {},
+): Promise<Book | null> {
   if (file.size > 50 * 1024 * 1024) throw new Error("That file is over 50 MB, too big for the free plan.");
   const { makeBook } = await import("foliate-js/view.js");
   let parsed;
@@ -35,20 +68,27 @@ export async function uploadBook(file: File, readerId: string): Promise<Book> {
   }
   const title = lang(parsed.metadata?.title) || file.name.replace(/\.[^.]+$/, "");
   const author = person(parsed.metadata?.author) || null;
+  const coverBlob: Blob | null = await Promise.resolve(parsed.getCover?.()).catch(() => null);
+  const cover = coverBlob ? await shrinkCover(coverBlob) : null;
+
+  // Already on the shelf?
+  const { data: same } = await supabase
+    .from("books")
+    .select("*")
+    .ilike("title", title.replace(/[%_\\]/g, (c) => `\\${c}`))
+    .limit(1);
+  if (same?.[0] && hooks.confirmDuplicate && !(await hooks.confirmDuplicate(same[0] as Book))) return null;
+
+  hooks.onPreview?.({ title, author, cover: cover ? URL.createObjectURL(cover) : null });
 
   const id = crypto.randomUUID();
   const file_path = `${id}/book.epub`;
-  const up = await supabase.storage
-    .from(BUCKET)
-    .upload(file_path, file, { contentType: "application/epub+zip" });
-  if (up.error) throw new Error(`Upload failed: ${up.error.message}`);
+  await uploadWithProgress(file_path, file, "application/epub+zip", hooks.onProgress);
 
   let cover_path: string | null = null;
-  const cover: Blob | null = await Promise.resolve(parsed.getCover?.()).catch(() => null);
   if (cover) {
-    const small = await shrinkCover(cover);
     const path = `${id}/cover.jpg`;
-    const res = await supabase.storage.from(BUCKET).upload(path, small, { contentType: "image/jpeg" });
+    const res = await supabase.storage.from(BUCKET).upload(path, cover, { contentType: "image/jpeg" });
     if (!res.error) cover_path = path;
   }
 

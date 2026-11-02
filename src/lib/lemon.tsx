@@ -14,6 +14,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { glassDense } from "./glass";
+import { flushOutbox } from "./offline";
 import type { Activity, LivePosition, Reader } from "./types";
 import { NUDGES, type NudgeKind } from "./nudges";
 
@@ -92,10 +93,19 @@ export function LemonProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker
-        .register("/sw.js", { scope: "/", updateViaCache: "none" })
+        // In development the worker only handles notifications (see public/sw.js)
+        .register(process.env.NODE_ENV === "production" ? "/sw.js" : "/sw.js?dev", { scope: "/", updateViaCache: "none" })
         .catch(() => {});
     }
   }, []);
+
+  // Send saves that were kept on the phone while offline
+  useEffect(() => {
+    if (!userId) return;
+    flushOutbox();
+    window.addEventListener("online", flushOutbox);
+    return () => window.removeEventListener("online", flushOutbox);
+  }, [userId]);
 
   // Redirects
   useEffect(() => {
@@ -143,7 +153,7 @@ export function LemonProvider({ children }: { children: ReactNode }) {
         })
         .on("broadcast", { event: "nudge" }, ({ payload }) => {
           const p = payload as { text: string; bookId: string | null };
-          toast(`${partner.name} ${p.text}`, p.bookId ? { label: "Join", href: `/read/${p.bookId}?join=1` } : undefined);
+          toast(`${partner.name} ${p.text}`, p.bookId ? { label: "Join", href: `/read?b=${p.bookId}&join=1` } : undefined);
         })
         .subscribe((status) => {
           if (status === "SUBSCRIBED") channel!.track({ ...activityRef.current, at: Date.now() });
@@ -178,6 +188,7 @@ export function LemonProvider({ children }: { children: ReactNode }) {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) return "You’re signed out";
+      if (!navigator.onLine) return "You’re offline";
       let title: string | undefined;
       if (bookId) {
         const { data: b } = await supabase.from("books").select("title").eq("id", bookId).single();

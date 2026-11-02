@@ -7,8 +7,10 @@ import { Suspense } from "react";
 import { useLemon } from "@/lib/lemon";
 import { supabase, BUCKET } from "@/lib/supabase";
 import type { Book, Progress } from "@/lib/types";
-import { uploadBook, deleteBook, takeSharedFile } from "@/lib/upload";
-import { forgetBookFile } from "@/lib/bookCache";
+import { uploadBook, deleteBook, takeSharedFile, type UploadPreview } from "@/lib/upload";
+import { downloadedBookIds, ensureDownloaded, forgetBookFile } from "@/lib/bookCache";
+import { isOffline, useOffline } from "@/lib/offline";
+import { CloudOffIcon } from "lucide-react";
 import { pct } from "@/lib/format";
 import { BotHead } from "@/components/BotHead";
 import { enablePush, hasPushSubscription, isIOS, isStandalone, pushSupported } from "@/lib/push";
@@ -34,7 +36,11 @@ function Library() {
   const [books, setBooks] = useState<Book[] | null>(null);
   const [progress, setProgress] = useState<Progress[]>([]);
   const [covers, setCovers] = useState<Record<string, string>>({});
-  const [uploading, setUploading] = useState<string | null>(null);
+  const [downloaded, setDownloaded] = useState<Set<string>>(new Set());
+  const offline = useOffline();
+  const [upload, setUpload] = useState<{ preview?: UploadPreview; progress: number } | null>(null);
+  const [dupAsk, setDupAsk] = useState<{ book: Book; answer: (add: boolean) => void } | null>(null);
+  const [removeAsk, setRemoveAsk] = useState<Book | null>(null);
   const [menuBook, setMenuBook] = useState<Book | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -49,12 +55,15 @@ function Library() {
     setBooks(list);
     setProgress((p.data ?? []) as Progress[]);
     const paths = list.map((x) => x.cover_path).filter(Boolean) as string[];
-    if (paths.length) {
-      const { data } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 60 * 60 * 6);
-      const map: Record<string, string> = {};
-      data?.forEach((d) => d.path && d.signedUrl && (map[d.path] = d.signedUrl));
-      setCovers(map);
+    // Offline the cover links can't be renewed, so reuse the last ones (the app keeps the images)
+    const saved: Record<string, string> = JSON.parse(localStorage.getItem("lemon-covers") ?? "{}");
+    if (paths.length && !isOffline()) {
+      const { data } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 60 * 60 * 24 * 7);
+      data?.forEach((d) => d.path && d.signedUrl && (saved[d.path] = d.signedUrl));
+      localStorage.setItem("lemon-covers", JSON.stringify(saved));
     }
+    setCovers(saved);
+    setDownloaded(await downloadedBookIds());
   }, []);
 
   useEffect(() => {
@@ -77,18 +86,39 @@ function Library() {
     };
   }, [me, load]);
 
+  // Keep the books you're reading saved on the phone, so they open without internet
+  useEffect(() => {
+    if (!me || !books || offline) return;
+    const reading = books.filter((b) => progress.some((p) => p.book_id === b.id && p.reader_id === me.id && !p.finished_at));
+    const missing = reading.filter((b) => !downloaded.has(b.id));
+    if (!missing.length) return;
+    (async () => {
+      for (const b of missing) await ensureDownloaded(b.id, b.file_path).catch(() => {});
+      setDownloaded(await downloadedBookIds());
+    })();
+  }, [me, books, progress, downloaded, offline]);
+
   const addFile = useCallback(
     async (file: File) => {
       if (!me) return;
-      setUploading(file.name);
+      setUpload({ progress: 0 });
       try {
-        await uploadBook(file, me.id);
-        toast("Added 🍋");
-        await load();
+        const book = await uploadBook(file, me.id, {
+          onPreview: (preview) => setUpload({ preview, progress: 0 }),
+          onProgress: (progress) => setUpload((u) => (u ? { ...u, progress } : u)),
+          confirmDuplicate: (existing) => new Promise((answer) => setDupAsk({ book: existing, answer })),
+        });
+        if (book) {
+          await load();
+          toast("Added 🍋");
+        }
       } catch (e) {
         toast((e as Error).message);
       } finally {
-        setUploading(null);
+        setUpload((u) => {
+          if (u?.preview?.cover) URL.revokeObjectURL(u.preview.cover);
+          return null;
+        });
       }
     },
     [me, toast, load],
@@ -118,6 +148,11 @@ function Library() {
       <TopBar>
         <img src="/icons/icon-192.png" alt="" className="size-7 rounded-lg" />
         <h1 className="mr-auto font-serif text-lg font-semibold tracking-tight">Lemon</h1>
+        {offline && (
+          <span className="flex h-8 items-center gap-1.5 rounded-full bg-ink/5 px-3 text-xs font-medium text-muted" role="status">
+            <CloudOffIcon className="size-3.5" /> Offline
+          </span>
+        )}
         <button onClick={() => setSettingsOpen(true)} aria-label="Settings" className="rounded-full">
           <Avatar reader={me} size={36} />
         </button>
@@ -151,21 +186,26 @@ function Library() {
             <div key={i} className="aspect-[2/3] animate-pulse rounded-xl bg-ink/5" />
           ))}
         </div>
-      ) : books.length === 0 ? (
+      ) : books.length === 0 && !upload?.preview ? (
         <EmptyShelf onAdd={() => fileInput.current?.click()} />
       ) : (
         <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3">
+          {upload?.preview && <UploadingCard preview={upload.preview} progress={upload.progress} />}
           {books.map((b) => {
             const mine = prog(b.id, me.id);
             const theirs = prog(b.id, partner?.id);
             const bothDone = mine?.finished_at && theirs?.finished_at;
             return (
-              <div key={b.id} className="group">
-                <Link href={`/read/${b.id}`} className="block active:scale-[0.98] transition-transform">
+              <div
+                key={b.id}
+                className={`group transition-opacity ${offline && !downloaded.has(b.id) ? "opacity-40" : ""}`}
+                title={offline && !downloaded.has(b.id) ? "Needs internet to open" : undefined}
+              >
+                <Link href={`/read?b=${b.id}`} className="block active:scale-[0.98] transition-transform">
                   <Cover book={b} url={b.cover_path ? covers[b.cover_path] : undefined} />
                 </Link>
                 <div className="mt-2.5 flex items-start gap-1">
-                  <Link href={`/read/${b.id}`} className="min-w-0 flex-1">
+                  <Link href={`/read?b=${b.id}`} className="min-w-0 flex-1">
                     <p className="line-clamp-2 font-serif text-[15px] font-semibold leading-snug">{b.title}</p>
                     {b.author && <p className="truncate text-xs text-muted">{b.author}</p>}
                   </Link>
@@ -178,7 +218,7 @@ function Library() {
                   </button>
                 </div>
                 {bothDone ? (
-                  <Link href={`/book/${b.id}`} className="mt-2 block text-xs font-medium text-leaf">
+                  <Link href={`/book?b=${b.id}`} className="mt-2 block text-xs font-medium text-leaf">
                     Finished together 🎉
                   </Link>
                 ) : (
@@ -208,13 +248,13 @@ function Library() {
         active="shelf"
         items={[
           { id: "shelf", label: "Shelf", icon: LibraryBigIcon, href: "/" },
-          { id: "reading", label: "Reading", icon: BookOpenTextIcon, href: myLastBook ? `/read/${myLastBook}` : null },
+          { id: "reading", label: "Reading", icon: BookOpenTextIcon, href: myLastBook ? `/read?b=${myLastBook}` : null },
           {
             id: "add",
-            label: uploading ? "Adding…" : "Add book",
+            label: upload ? (upload.progress > 0 ? `${Math.round(upload.progress * 100)}%` : "Adding…") : "Add book",
             icon: PlusIcon,
-            onClick: () => fileInput.current?.click(),
-            busy: !!uploading,
+            onClick: () => (offline ? toast("You’re offline") : fileInput.current?.click()),
+            busy: !!upload,
           },
         ]}
       />
@@ -223,7 +263,7 @@ function Library() {
         {menuBook && (
           <div className="space-y-2">
             <Link
-              href={`/book/${menuBook.id}`}
+              href={`/book?b=${menuBook.id}`}
               className="block w-full rounded-2xl bg-ink/5 px-4 py-3.5 text-left font-medium"
             >
               Our book
@@ -240,17 +280,9 @@ function Library() {
             </button>
             <button
               className="w-full rounded-2xl bg-red-50 px-4 py-3.5 text-left font-medium text-red-700"
-              onClick={async () => {
-                const b = menuBook;
-                if (!confirm(`Remove “${b.title}” for both of you?`)) return;
+              onClick={() => {
+                setRemoveAsk(menuBook);
                 setMenuBook(null);
-                try {
-                  await deleteBook(b);
-                  forgetBookFile(b.id);
-                  load();
-                } catch (e) {
-                  toast((e as Error).message);
-                }
               }}
             >
               Remove
@@ -259,8 +291,83 @@ function Library() {
         )}
       </Sheet>
 
+      <Sheet open={!!removeAsk} onClose={() => setRemoveAsk(null)} title={`Remove “${removeAsk?.title ?? ""}”?`}>
+        <p className="mb-4 text-sm text-muted">For both of you, with its notes.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button className="rounded-2xl bg-ink/5 py-3.5 font-medium" onClick={() => setRemoveAsk(null)}>
+            Keep
+          </button>
+          <button
+            className="rounded-2xl bg-red-600 py-3.5 font-semibold text-white"
+            onClick={async () => {
+              const b = removeAsk!;
+              setRemoveAsk(null);
+              try {
+                await deleteBook(b);
+                forgetBookFile(b.id);
+                load();
+              } catch (e) {
+                toast((e as Error).message);
+              }
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={!!dupAsk}
+        onClose={() => {
+          dupAsk?.answer(false);
+          setDupAsk(null);
+        }}
+        title="Already on your shelf"
+      >
+        <p className="mb-4 text-sm text-muted">“{dupAsk?.book.title}”</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="rounded-2xl bg-ink/5 py-3.5 font-medium"
+            onClick={() => {
+              dupAsk?.answer(false);
+              setDupAsk(null);
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            className="rounded-2xl bg-lemon py-3.5 font-semibold"
+            onClick={() => {
+              dupAsk?.answer(true);
+              setDupAsk(null);
+            }}
+          >
+            Add anyway
+          </button>
+        </div>
+      </Sheet>
+
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </main>
+  );
+}
+
+function UploadingCard({ preview, progress }: { preview: UploadPreview; progress: number }) {
+  return (
+    <div aria-live="polite">
+      <div className="relative overflow-hidden rounded-xl">
+        {preview.cover ? (
+          <img src={preview.cover} alt="" className="aspect-[2/3] w-full object-cover opacity-60" />
+        ) : (
+          <div className="aspect-[2/3] w-full bg-gradient-to-br from-lemon/60 to-lemon-deep/60" />
+        )}
+        <div className="absolute inset-x-3 bottom-3 h-1.5 overflow-hidden rounded-full bg-white/70">
+          <div className="h-full rounded-full bg-ink transition-[width] duration-200" style={{ width: `${Math.max(4, progress * 100)}%` }} />
+        </div>
+      </div>
+      <p className="mt-2.5 line-clamp-2 font-serif text-[15px] font-semibold leading-snug">{preview.title}</p>
+      <p className="text-xs text-muted">Adding · {Math.round(progress * 100)}%</p>
+    </div>
   );
 }
 

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BookOpenTextIcon, ChevronLeftIcon } from "lucide-react";
 import { useLemon } from "@/lib/lemon";
 import { supabase, BUCKET } from "@/lib/supabase";
@@ -17,7 +17,15 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 
 
 /** "Our book": a keepsake of reading one book together. */
 export default function OurBookPage() {
-  const { id } = useParams<{ id: string }>();
+  return (
+    <Suspense>
+      <OurBook />
+    </Suspense>
+  );
+}
+
+function OurBook() {
+  const id = useSearchParams().get("b") ?? "";
   const { me, partner, colorOf, nameOf } = useLemon();
   const [data, setData] = useState<Data | null>(null);
 
@@ -70,7 +78,7 @@ export default function OurBookPage() {
         </Link>
         <h1 className="mr-auto font-serif text-lg font-semibold">Our book</h1>
         <Link
-          href={`/read/${book.id}`}
+          href={`/read?b=${book.id}`}
           className="flex h-9 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-sm font-semibold"
         >
           <BookOpenTextIcon className="size-4" /> Read
@@ -139,7 +147,7 @@ export default function OurBookPage() {
             {moments.map((a) => (
               <Link
                 key={a.id}
-                href={`/read/${book.id}`}
+                href={`/read?b=${book.id}`}
                 className="block rounded-3xl bg-paper p-4 ring-1 ring-ink/5"
               >
                 <p className="border-l-4 pl-3 font-serif text-[15px] italic leading-relaxed" style={{ borderColor: colorOf(a.reader_id) }}>

@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   const payload = JSON.stringify({
     title: `${me.name} 🍋`,
     body: nudge.body(title),
-    url: bookId ? `/read/${bookId}?join=1` : "/",
+    url: bookId ? `/read?b=${bookId}&join=1` : "/",
     tag: `lemon-${kind}`,
   });
 

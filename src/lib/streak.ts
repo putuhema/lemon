@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./supabase";
+import { isOffline, queuePages } from "./offline";
 
 /** Pages you need to turn in a day for it to count. Small on purpose: any reading counts. */
 export const PAGES_PER_DAY = 3;
@@ -24,8 +25,15 @@ export function addDays(day: string, n: number) {
 /** Add pages to today's count. Resolves to today's new total, or null if it couldn't be saved. */
 export async function logPages(pages: number): Promise<number | null> {
   if (pages <= 0) return null;
-  const { data, error } = await supabase.rpc("log_reading", { p_day: localDay(), p_pages: pages });
-  return error ? null : (data as number);
+  const day = localDay();
+  const { data, error } = isOffline()
+    ? { data: null, error: true }
+    : await supabase.rpc("log_reading", { p_day: day, p_pages: pages });
+  if (error) {
+    queuePages(day, pages); // counted once you're back online
+    return null;
+  }
+  return data as number;
 }
 
 type DayRow = { reader_id: string; day: string; pages: number };

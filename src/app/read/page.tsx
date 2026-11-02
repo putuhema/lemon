@@ -4,11 +4,12 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useLemon } from "@/lib/lemon";
 import { supabase } from "@/lib/supabase";
 import { loadBookFile } from "@/lib/bookCache";
 import { computeStreak, logPages, PAGES_PER_DAY } from "@/lib/streak";
+import { saveProgress, isOffline, useOffline } from "@/lib/offline";
 import { bookCSS, DEFAULT_PREFS, THEMES, type Prefs } from "@/lib/readerStyle";
 import type { Annotation, Book, Bookmark, Progress, Reply } from "@/lib/types";
 import { collapse, compare } from "foliate-js/epubcfi.js";
@@ -20,6 +21,8 @@ import { readerGlass, readerGlassDark } from "@/lib/glass";
 import {
   ALargeSmallIcon,
   BookmarkIcon,
+  CloudOffIcon,
+  Undo2Icon,
   XIcon,
   ChevronLeftIcon,
   CopyIcon,
@@ -103,8 +106,9 @@ function rangeFraction(view: any, index: number, range: Range) {
 }
 
 function Reader() {
-  const { id } = useParams<{ id: string }>();
   const search = useSearchParams();
+  // The book is in the address (/read?b=…) so this page is static and opens offline
+  const id = search.get("b") ?? "";
   const joinOnOpen = search.get("join") === "1";
   const { me, partner, partnerActivity, partnerLive, setActivity, sendPosition, nudge, toast, colorOf, nameOf } =
     useLemon();
@@ -129,6 +133,9 @@ function Reader() {
   const [toc, setToc] = useState<TocItem[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [tocTab, setTocTab] = useState<"chapters" | "bookmarks">("chapters");
+  const [returnTo, setReturnTo] = useState<{ cfi: string; label: string } | null>(null);
+  const [showTip, setShowTip] = useState(false);
+  const returnTurns = useRef<number | null>(null);
 
   // Refs for use inside foliate's event listeners (registered once per book)
   const locRef = useRef<Loc | null>(null);
@@ -155,6 +162,7 @@ function Reader() {
     colorOfRef.current = colorOf;
   });
 
+  const offline = useOffline();
   const partnerHere = !!partner && partnerActivity?.bookId === id;
   const partnerFollowingMe = partnerHere && !!partnerActivity?.following;
   useEffect(() => {
@@ -200,12 +208,12 @@ function Reader() {
     if (!l || !meNow) return;
     if (!finishedRef.current && l.fraction >= 0.99) {
       finishedRef.current = new Date().toISOString();
-      toastRef.current("You finished 🎉", { label: "Our book", href: `/book/${id}` });
+      toastRef.current("You finished 🎉", { label: "Our book", href: `/book?b=${id}` });
     }
     const turned = pagesRef.current;
     pagesRef.current = 0;
     if (turned > 0) logPages(turned).then((total) => onPagesLogged(total, turned));
-    await supabase.from("progress").upsert({
+    await saveProgress({
       reader_id: meNow.id,
       book_id: id,
       cfi: l.cfi,
@@ -274,7 +282,9 @@ function Reader() {
           if (!cancelled) setReplies((r.data ?? []) as Reply[]);
         }
 
-        const file = await loadBookFile(id, b.data.file_path);
+        const file = await loadBookFile(id, b.data.file_path).catch((e) => {
+          throw isOffline() ? new Error("This book isn’t on your phone yet. Open it once with internet.") : e;
+        });
         await import("foliate-js/view.js");
         const { Overlayer } = await import("foliate-js/overlayer.js");
         if (cancelled || !hostRef.current) return;
@@ -312,6 +322,14 @@ function Reader() {
           lastFractionRef.current = fraction;
           scheduleSave();
           if (partnerHereRef.current) sendPosition({ bookId: id, ...l });
+          // After a jump, offer "back" until you've read a few pages in the new spot
+          if (returnTurns.current !== null && last !== null && Math.abs(fraction - last) < 0.02 && fraction !== last) {
+            returnTurns.current++;
+            if (returnTurns.current >= 3) {
+              returnTurns.current = null;
+              setReturnTo(null);
+            }
+          }
         });
 
         view.addEventListener("load", (e: CustomEvent) => {
@@ -368,6 +386,7 @@ function Reader() {
         await view.init({ lastLocation: start, showTextStart: !start });
         if (cancelled) return;
         setStatus("ready");
+        if (!localStorage.getItem("lemon-tip-reader")) setShowTip(true);
         if (joinOnOpen) toast(`On ${partner.name}’s page 💛`);
       } catch (err) {
         if (cancelled) return;
@@ -521,7 +540,7 @@ function Reader() {
     setSelection(null);
     setComposer(false);
     const { data, error } = await supabase.from("annotations").insert(row).select().single();
-    if (error) return toast("Couldn’t save");
+    if (error) return toast(isOffline() ? "You’re offline. Try again when connected." : "Couldn’t save");
     setAnns((all) => [...all.filter((x) => x.id !== data.id), data as Annotation]);
   }
 
@@ -555,9 +574,19 @@ function Reader() {
       .select()
       .single();
     if (data) setBookmarks((all) => [...all, data as Bookmark].sort((a, b) => a.fraction - b.fraction));
+    else if (isOffline()) toast("You’re offline. Try again when connected.");
   }
 
+  /** Remember where you are before jumping somewhere, so you can come back. */
+  const rememberSpot = () => {
+    const l = locRef.current;
+    if (!l) return;
+    setReturnTo({ cfi: l.cfi, label: l.chapter ?? pct(l.fraction) });
+    returnTurns.current = 0;
+  };
+
   const jumpTo = (cfi: string) => {
+    rememberSpot();
     setFollowing(false);
     viewRef.current?.goTo(cfi);
     setPanel(null);
@@ -685,7 +714,11 @@ function Reader() {
                   stroke={pageBookmarks.length ? me.color : "currentColor"}
                 />
               </button>
-              {partnerHere ? (
+              {offline ? (
+                <span className="flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium" style={{ background: "rgba(127,127,127,.14)" }}>
+                  <CloudOffIcon className="size-3.5" /> Offline
+                </span>
+              ) : partnerHere ? (
                 <button
                   onClick={() => setPanel("live")}
                   className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink"
@@ -716,6 +749,7 @@ function Reader() {
                 me={{ color: me.color, fraction: loc?.fraction ?? 0 }}
                 partner={partnerPos ? { color: partner.color, fraction: partnerPos.fraction, name: partner.name } : null}
                 onSeek={(f) => {
+                  rememberSpot();
                   setFollowing(false);
                   viewRef.current?.goToFraction(f);
                 }}
@@ -740,6 +774,49 @@ function Reader() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Back to where you were */}
+      {status === "ready" && returnTo && !chrome && !selection && (
+        <button
+          onClick={() => {
+            const target = returnTo.cfi;
+            setReturnTo(null);
+            returnTurns.current = null;
+            setFollowing(false);
+            viewRef.current?.goTo(target);
+          }}
+          className={`fade-in absolute left-1/2 z-20 flex h-9 max-w-[80vw] -translate-x-1/2 items-center gap-1.5 rounded-full px-3.5 text-xs font-medium ${g}`}
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 44px)", color: theme.fg }}
+        >
+          <Undo2Icon className="size-4 shrink-0" />
+          <span className="truncate">{returnTo.label}</span>
+        </button>
+      )}
+
+      {/* First time in the reader: where to tap */}
+      {showTip && (
+        <button
+          className="fade-in absolute inset-0 z-40 grid grid-cols-[28%_1fr_28%] text-sm font-medium"
+          style={{ background: prefs.theme === "night" ? "rgb(28 26 22 / .88)" : "rgb(255 253 245 / .9)", color: theme.fg }}
+          onClick={() => {
+            localStorage.setItem("lemon-tip-reader", "1");
+            setShowTip(false);
+          }}
+          aria-label="Got it"
+        >
+          <span className="flex flex-col items-center justify-center gap-1 border-r border-dashed border-current/20">
+            <span className="text-2xl">‹</span>Back
+          </span>
+          <span className="flex flex-col items-center justify-center gap-2">
+            <BotHead color={me.color} size={56} mood="happy" bob />
+            Menu
+            <span className="mt-6 text-xs opacity-50">Tap to start</span>
+          </span>
+          <span className="flex flex-col items-center justify-center gap-1 border-l border-dashed border-current/20">
+            <span className="text-2xl">›</span>Next
+          </span>
+        </button>
       )}
 
       {/* Selection actions */}
@@ -812,6 +889,7 @@ function Reader() {
             }}
             onReply={(r) => setReplies((all) => [...all.filter((x) => x.id !== r.id), r])}
             onUpdated={(a) => setAnns((all) => all.map((x) => (x.id === a.id ? a : x)))}
+            onError={toast}
           />
         )}
       </Sheet>
@@ -875,6 +953,7 @@ function Reader() {
             items={toc}
             current={loc?.chapter ?? null}
             onGo={(href) => {
+              rememberSpot();
               setFollowing(false);
               viewRef.current?.goTo(href);
               setPanel(null);
@@ -1179,6 +1258,7 @@ function AnnotationThread({
   onDeleted,
   onReply,
   onUpdated,
+  onError,
 }: {
   list: Annotation[];
   replies: Reply[];
@@ -1188,6 +1268,7 @@ function AnnotationThread({
   onDeleted: (id: string) => void;
   onReply: (r: Reply) => void;
   onUpdated: (a: Annotation) => void;
+  onError: (message: string) => void;
 }) {
   const [text, setText] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
@@ -1282,7 +1363,8 @@ function AnnotationThread({
             .insert({ annotation_id: first.id, reader_id: meId, body: text.trim() })
             .select()
             .single();
-          if (data) onReply(data as Reply);
+          if (!data) return onError(isOffline() ? "You’re offline. Try again when connected." : "Couldn’t send");
+          onReply(data as Reply);
           setText("");
         }}
       >

@@ -11,6 +11,7 @@ A private ebook reader for two, made for reading together from far away.
 - Continue reading from the shelf; new books open at chapter one
 - Bookmarks, and an "Our book" keepsake page with your favorite moments
 - Zest and Bloom, your companion bots
+- Works offline: the shelf, books you've opened, and your place (saved and sent once you're back online)
 - Paper / Sepia / Night themes and font size, with your place saved automatically
 - Android: Share → Lemon sends a downloaded EPUB straight to your shelf
 
@@ -61,6 +62,7 @@ npm run dev
 ```
 
 ## Good to know
+- Offline support runs in the production build only (`npm run build && npm start`, or the deployed app). In `npm run dev` the service worker only handles notifications.
 - EPUB only for now (no PDF). Files up to 50 MB (Supabase free plan limit).
 - DRM-protected books (Kindle, Apple Books, Google Play) can't be opened.
 - Your partner's notes stay hidden until you've read up to them. Jumping ahead with the slider doesn't count as reading.

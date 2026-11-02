@@ -22,7 +22,7 @@ export function ContinueCard({
 }) {
   return (
     <Link
-      href={`/read/${book.id}`}
+      href={`/read?b=${book.id}`}
       className="flex items-center gap-3.5 rounded-3xl bg-paper p-3 ring-1 ring-ink/5 transition-transform active:scale-[0.98]"
     >
       {cover ? (
