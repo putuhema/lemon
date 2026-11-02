@@ -245,7 +245,7 @@ export function QuoteCard({
         <button
           disabled={!file}
           onClick={share}
-          className="flex items-center justify-center gap-2 rounded-2xl bg-lemon py-3.5 font-semibold disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-2xl bg-lemon py-3.5 font-semibold disabled:opacity-50 text-on-lemon"
         >
           <Share2Icon className="size-4" /> Share
         </button>

@@ -79,7 +79,7 @@ function OurBook() {
         <h1 className="mr-auto font-serif text-lg font-semibold">Our book</h1>
         <Link
           href={`/read?b=${book.id}`}
-          className="flex h-9 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-sm font-semibold"
+          className="flex h-9 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-sm font-semibold text-on-lemon"
         >
           <BookOpenTextIcon className="size-4" /> Read
         </Link>

@@ -48,7 +48,7 @@ export function ContinueCard({
           )}
         </div>
       </div>
-      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-lemon text-ink" aria-label="Continue reading">
+      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-lemon text-on-lemon" aria-label="Continue reading">
         <BookOpenTextIcon className="size-5" />
       </span>
     </Link>

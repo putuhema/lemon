@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import { LayoutGroup, motion, MotionConfig, type Transition } from "motion/react";
 import { BookOpenTextIcon, LibraryBigIcon, PlusIcon, type LucideIcon } from "lucide-react";
 import { glass } from "@/lib/glass";
@@ -21,8 +21,8 @@ export function TopBar({ children }: { children: ReactNode }) {
 }
 
 type Item =
-  | { id: string; label: string; icon: LucideIcon; href: string | null }
-  | { id: string; label: string; icon: LucideIcon; onClick: () => void; busy?: boolean };
+  | { id: string; label: string; icon: LucideIcon | ReactNode; href: string | null }
+  | { id: string; label: string; icon: LucideIcon | ReactNode; onClick: () => void; busy?: boolean };
 
 /** The floating bottom nav, with a highlight that slides to the active tab. */
 export function FloatingNav({ items, active }: { items: Item[]; active: string }) {
@@ -56,7 +56,15 @@ function NavItem({ item, active }: { item: Item; active: boolean }) {
       {busy ? (
         <span className="relative size-5 animate-spin rounded-full border-2 border-ink/20 border-t-ink" />
       ) : (
-        <Icon className="relative size-5" strokeWidth={active ? 2.2 : 1.8} />
+        // A Lucide icon, or any element (like your bot)
+        isValidElement(Icon) ? (
+          <span className="relative grid size-5 place-items-center">{Icon}</span>
+        ) : (
+          (() => {
+            const I = Icon as LucideIcon;
+            return <I className="relative size-5" strokeWidth={active ? 2.2 : 1.8} />;
+          })()
+        )
       )}
       <span className="relative text-[10.5px] leading-none">{item.label}</span>
     </>

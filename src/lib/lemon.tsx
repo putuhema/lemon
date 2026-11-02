@@ -16,6 +16,7 @@ import { supabase } from "./supabase";
 import { glassDense } from "./glass";
 import { flushOutbox } from "./offline";
 import { haptic } from "./haptics";
+import { applyTheme, getThemePref } from "./theme";
 import type { Activity, LivePosition, Reader } from "./types";
 import { NUDGES, type NudgeKind } from "./nudges";
 
@@ -98,6 +99,15 @@ export function LemonProvider({ children }: { children: ReactNode }) {
         .register(process.env.NODE_ENV === "production" ? "/sw.js" : "/sw.js?dev", { scope: "/", updateViaCache: "none" })
         .catch(() => {});
     }
+  }, []);
+
+  // Dark mode: apply the saved choice, and follow the phone when set to "system"
+  useEffect(() => {
+    applyTheme();
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => getThemePref() === "system" && applyTheme("system");
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
   }, []);
 
   // Send saves that were kept on the phone while offline
@@ -250,7 +260,7 @@ export function LemonProvider({ children }: { children: ReactNode }) {
             <span>{t.text}</span>
             {t.action && (
               <button
-                className="shrink-0 rounded-full bg-lemon px-3 py-1.5 font-semibold text-ink"
+                className="shrink-0 rounded-full bg-lemon px-3 py-1.5 font-semibold text-on-lemon"
                 onClick={() => {
                   setToasts((all) => all.filter((x) => x.id !== t.id));
                   router.push(t.action!.href);

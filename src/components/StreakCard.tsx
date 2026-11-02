@@ -51,9 +51,6 @@ export function StreakCard({ streak, me, partner }: { streak: Streak; me: Reader
               );
             })}
           </div>
-          <p className="text-xs text-muted">
-            Best <span className="font-semibold text-ink tabular-nums">{best}</span>
-          </p>
         </div>
       </div>
     </section>

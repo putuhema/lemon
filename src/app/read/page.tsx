@@ -3,7 +3,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- foliate-js is untyped */
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { useLemon } from "@/lib/lemon";
 import { supabase } from "@/lib/supabase";
@@ -11,9 +18,11 @@ import { loadBookFile } from "@/lib/bookCache";
 import { computeStreak, logPages, PAGES_PER_DAY } from "@/lib/streak";
 import { saveProgress, isOffline, useOffline } from "@/lib/offline";
 import { haptic, sinceLastHaptic } from "@/lib/haptics";
+import { barColor, isDark } from "@/lib/theme";
 import { localDay } from "@/lib/streak";
 import { PeekBot, type Peek } from "@/components/PeekBot";
 import { QuoteCard } from "@/components/QuoteCard";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { bookCSS, DEFAULT_PREFS, THEMES, type Prefs } from "@/lib/readerStyle";
 import type { Annotation, Book, Bookmark, Progress, Reply } from "@/lib/types";
 import { collapse, compare } from "foliate-js/epubcfi.js";
@@ -25,6 +34,7 @@ import { readerGlass, readerGlassDark } from "@/lib/glass";
 import {
   ALargeSmallIcon,
   BookmarkIcon,
+  Trash2Icon,
   ImageIcon,
   CloudOffIcon,
   Undo2Icon,
@@ -62,6 +72,8 @@ function usePrefs() {
       const saved = localStorage.getItem("lemon-prefs");
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reading saved settings after mount
       if (saved) setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(saved) });
+      // No reading theme picked yet: match the app (dark mode starts in Night)
+      else if (isDark()) setPrefs({ ...DEFAULT_PREFS, theme: "night" });
     } catch {}
   }, []);
   const update = useCallback((p: Partial<Prefs>) => {
@@ -74,7 +86,8 @@ function usePrefs() {
   return [prefs, update] as const;
 }
 
-const CHAPTER_ONE = /\b(chapter|bab|prologue|prolog|part (one|1|i)\b|book (one|1|i)\b)/i;
+const CHAPTER_ONE =
+  /\b(chapter|bab|prologue|prolog|part (one|1|i)\b|book (one|1|i)\b)/i;
 const FRONT_MATTER =
   /^(cover|title|half.?title|contents|table of contents|copyright|license|licence|dedication|epigraph|preface|foreword|introduction|acknowledg|list of|illustrations|about|also by|praise|daftar isi|kata pengantar|halaman)/i;
 
@@ -94,7 +107,11 @@ function findStoryStart(toc: TocItem[], bookTitle = ""): string | undefined {
   const title = squash(bookTitle);
   return flat.find((it) => {
     const label = (it.label ?? "").trim();
-    return it.href && !FRONT_MATTER.test(label) && !(title && squash(label) === title);
+    return (
+      it.href &&
+      !FRONT_MATTER.test(label) &&
+      !(title && squash(label) === title)
+    );
   })?.href;
 }
 
@@ -103,7 +120,10 @@ function onPage(cfi: string, pageCfi?: string | null) {
   if (!pageCfi) return false;
   try {
     const at = collapse(cfi);
-    return compare(at, collapse(pageCfi)) >= 0 && compare(at, collapse(pageCfi, true)) <= 0;
+    return (
+      compare(at, collapse(pageCfi)) >= 0 &&
+      compare(at, collapse(pageCfi, true)) <= 0
+    );
   } catch {
     return false;
   }
@@ -111,7 +131,8 @@ function onPage(cfi: string, pageCfi?: string | null) {
 
 /** Late evening counts as "tonight" until 4 am. */
 const isNight = (d = new Date()) => d.getHours() >= 23 || d.getHours() < 4;
-const nightKey = (d = new Date()) => `lemon-goodnight-${localDay(d.getHours() < 4 ? new Date(d.getTime() - 86400000) : d)}`;
+const nightKey = (d = new Date()) =>
+  `lemon-goodnight-${localDay(d.getHours() < 4 ? new Date(d.getTime() - 86400000) : d)}`;
 const SEEN_KEY = "lemon-seen-notes";
 
 /** Partner notes you've already reacted to (so heart eyes happen once per note). */
@@ -141,7 +162,10 @@ function rangeFraction(view: any, index: number, range: Range) {
   pre.setStart(doc.body, 0);
   pre.setEnd(range.startContainer, range.startOffset);
   const total = doc.body.textContent?.length || 1;
-  return Math.min(1, Math.max(0, start + (end - start) * (pre.toString().length / total)));
+  return Math.min(
+    1,
+    Math.max(0, start + (end - start) * (pre.toString().length / total)),
+  );
 }
 
 function Reader() {
@@ -149,13 +173,25 @@ function Reader() {
   // The book is in the address (/read?b=…) so this page is static and opens offline
   const id = search.get("b") ?? "";
   const joinOnOpen = search.get("join") === "1";
-  const { me, partner, partnerActivity, partnerLive, setActivity, sendPosition, nudge, toast, colorOf, nameOf } =
-    useLemon();
+  const {
+    me,
+    partner,
+    partnerActivity,
+    partnerLive,
+    setActivity,
+    sendPosition,
+    nudge,
+    toast,
+    colorOf,
+    nameOf,
+  } = useLemon();
 
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<any>(null);
   const [book, setBook] = useState<Book | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
   const [errorMsg, setErrorMsg] = useState("");
   const [loc, setLoc] = useState<Loc | null>(null);
   const [maxFraction, setMaxFraction] = useState(0);
@@ -167,12 +203,17 @@ function Reader() {
   const [selection, setSelection] = useState<Sel | null>(null);
   const [composer, setComposer] = useState(false);
   const [openCfi, setOpenCfi] = useState<string | null>(null);
-  const [panel, setPanel] = useState<null | "notes" | "type" | "toc" | "live">(null);
+  const [panel, setPanel] = useState<null | "notes" | "type" | "toc" | "live">(
+    null,
+  );
   const [following, setFollowing] = useState(false);
   const [toc, setToc] = useState<TocItem[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [tocTab, setTocTab] = useState<"chapters" | "bookmarks">("chapters");
-  const [returnTo, setReturnTo] = useState<{ cfi: string; label: string } | null>(null);
+  const [returnTo, setReturnTo] = useState<{
+    cfi: string;
+    label: string;
+  } | null>(null);
   const [showTip, setShowTip] = useState(false);
   const returnTurns = useRef<number | null>(null);
   const [peek, setPeek] = useState<Peek | null>(null);
@@ -187,7 +228,6 @@ function Reader() {
     setPeek({ ...p, key: Date.now() });
     peekTimer.current = setTimeout(() => setPeek(null), 2700);
   }, []);
-
 
   // Refs for use inside foliate's event listeners (registered once per book)
   const locRef = useRef<Loc | null>(null);
@@ -224,9 +264,17 @@ function Reader() {
   // Where the partner is: live position if they're reading now, otherwise their last saved spot.
   const partnerPos: Loc | null =
     partnerLive?.bookId === id
-      ? { cfi: partnerLive.cfi, fraction: partnerLive.fraction, chapter: partnerLive.chapter }
+      ? {
+          cfi: partnerLive.cfi,
+          fraction: partnerLive.fraction,
+          chapter: partnerLive.chapter,
+        }
       : partnerProg?.cfi
-        ? { cfi: partnerProg.cfi, fraction: partnerProg.fraction, chapter: partnerProg.chapter }
+        ? {
+            cfi: partnerProg.cfi,
+            fraction: partnerProg.fraction,
+            chapter: partnerProg.chapter,
+          }
         : null;
   const partnerPosRef = useRef(partnerPos);
   useEffect(() => {
@@ -239,10 +287,21 @@ function Reader() {
       if (total === null) return;
       const before = total - turned;
       // Celebrate the moment today's reading counts
-      if (before < PAGES_PER_DAY && total >= PAGES_PER_DAY && meRef.current && partnerRef.current) {
+      if (
+        before < PAGES_PER_DAY &&
+        total >= PAGES_PER_DAY &&
+        meRef.current &&
+        partnerRef.current
+      ) {
         haptic("success");
-        const { data } = await supabase.from("reading_days").select("reader_id,day,pages");
-        const s = computeStreak(data ?? [], meRef.current.id, partnerRef.current.id);
+        const { data } = await supabase
+          .from("reading_days")
+          .select("reader_id,day,pages");
+        const s = computeStreak(
+          data ?? [],
+          meRef.current.id,
+          partnerRef.current.id,
+        );
         toastRef.current(
           s.partnerToday
             ? `The tree grew 🍋 Day ${s.current}`
@@ -261,11 +320,15 @@ function Reader() {
     if (!l || !meNow) return;
     if (!finishedRef.current && l.fraction >= 0.99) {
       finishedRef.current = new Date().toISOString();
-      toastRef.current("You finished 🎉", { label: "Our book", href: `/book?b=${id}` });
+      toastRef.current("You finished 🎉", {
+        label: "Our book",
+        href: `/book?b=${id}`,
+      });
     }
     const turned = pagesRef.current;
     pagesRef.current = 0;
-    if (turned > 0) logPages(turned).then((total) => onPagesLogged(total, turned));
+    if (turned > 0)
+      logPages(turned).then((total) => onPagesLogged(total, turned));
     await saveProgress({
       reader_id: meNow.id,
       book_id: id,
@@ -306,12 +369,20 @@ function Reader() {
         const [b, progs, a] = await Promise.all([
           supabase.from("books").select("*").eq("id", id).single(),
           supabase.from("progress").select("*").eq("book_id", id),
-          supabase.from("annotations").select("*").eq("book_id", id).order("fraction"),
+          supabase
+            .from("annotations")
+            .select("*")
+            .eq("book_id", id)
+            .order("fraction"),
         ]);
         if (!b.data) throw new Error("This book isn’t on your shelf anymore.");
         if (cancelled) return;
-        const mine = (progs.data ?? []).find((p: Progress) => p.reader_id === me.id) as Progress | undefined;
-        const theirs = (progs.data ?? []).find((p: Progress) => p.reader_id === partner.id) as Progress | undefined;
+        const mine = (progs.data ?? []).find(
+          (p: Progress) => p.reader_id === me.id,
+        ) as Progress | undefined;
+        const theirs = (progs.data ?? []).find(
+          (p: Progress) => p.reader_id === partner.id,
+        ) as Progress | undefined;
         setBook(b.data as Book);
         setPartnerProg(theirs ?? null);
         maxRef.current = mine?.max_fraction ?? 0;
@@ -325,18 +396,28 @@ function Reader() {
           .eq("book_id", id)
           .eq("reader_id", me.id)
           .order("fraction")
-          .then(({ data }) => !cancelled && setBookmarks((data ?? []) as Bookmark[]));
+          .then(
+            ({ data }) =>
+              !cancelled && setBookmarks((data ?? []) as Bookmark[]),
+          );
         if (annList.length) {
           const r = await supabase
             .from("replies")
             .select("*")
-            .in("annotation_id", annList.map((x) => x.id))
+            .in(
+              "annotation_id",
+              annList.map((x) => x.id),
+            )
             .order("created_at");
           if (!cancelled) setReplies((r.data ?? []) as Reply[]);
         }
 
         const file = await loadBookFile(id, b.data.file_path).catch((e) => {
-          throw isOffline() ? new Error("This book isn’t on your phone yet. Open it once with internet.") : e;
+          throw isOffline()
+            ? new Error(
+                "This book isn’t on your phone yet. Open it once with internet.",
+              )
+            : e;
         });
         await import("foliate-js/view.js");
         const { Overlayer } = await import("foliate-js/overlayer.js");
@@ -360,28 +441,53 @@ function Reader() {
 
         view.addEventListener("relocate", (e: CustomEvent) => {
           const { fraction, cfi, tocItem } = e.detail;
-          const l: Loc = { cfi, fraction, chapter: tocItem?.label?.trim() || null };
+          const l: Loc = {
+            cfi,
+            fraction,
+            chapter: tocItem?.label?.trim() || null,
+          };
           locRef.current = l;
           setLoc(l);
           // Reading page by page moves your "read up to here" mark. Big jumps (slider, jumping
           // to your partner) don't, so you don't see their notes on pages you skipped.
           const last = lastFractionRef.current;
           // A forward page turn counts toward today's reading streak
-          if (last !== null && fraction > last && fraction - last < 0.02) pagesRef.current++;
-          if (last !== null && fraction > maxRef.current && fraction - last > 0 && fraction - last < 0.02) {
+          if (last !== null && fraction > last && fraction - last < 0.02)
+            pagesRef.current++;
+          if (
+            last !== null &&
+            fraction > maxRef.current &&
+            fraction - last > 0 &&
+            fraction - last < 0.02
+          ) {
             maxRef.current = fraction;
             setMaxFraction(fraction);
           }
           // Swiping turns pages without a tap: give those a tick too (Android)
-          if (last !== null && fraction !== last && Math.abs(fraction - last) < 0.02 && sinceLastHaptic() > 500) {
+          if (
+            last !== null &&
+            fraction !== last &&
+            Math.abs(fraction - last) < 0.02 &&
+            sinceLastHaptic() > 500
+          ) {
             haptic("tick");
           }
-          if (last !== null && fraction !== last && Math.abs(fraction - last) < 0.02) pageTurns.current++;
+          if (
+            last !== null &&
+            fraction !== last &&
+            Math.abs(fraction - last) < 0.02
+          )
+            pageTurns.current++;
           lastFractionRef.current = fraction;
           scheduleSave();
           if (partnerHereRef.current) sendPosition({ bookId: id, ...l });
           // After a jump, offer "back" until you've read a few pages in the new spot
-          if (returnTurns.current !== null && last !== null && Math.abs(fraction - last) < 0.02 && fraction !== last) {
+          if (
+            returnTurns.current !== null &&
+            last !== null &&
+            Math.abs(fraction - last) < 0.02 &&
+            fraction !== last
+          ) {
             returnTurns.current++;
             if (returnTurns.current >= 3) {
               returnTurns.current = null;
@@ -416,7 +522,8 @@ function Reader() {
             const frame = doc.defaultView?.frameElement as HTMLElement | null;
             const x = (frame?.getBoundingClientRect().left ?? 0) + ev.clientX;
             // Haptics must play inside the tap itself (iPhone only allows it then)
-            const side = x < window.innerWidth * 0.28 || x > window.innerWidth * 0.72;
+            const side =
+              x < window.innerWidth * 0.28 || x > window.innerWidth * 0.72;
             if (side) haptic("tick");
             setTimeout(() => {
               if (Date.now() - annTapAt.current < 500) return;
@@ -430,12 +537,15 @@ function Reader() {
         });
 
         view.addEventListener("create-overlay", () => {
-          for (const a of visibleRef.current) view.addAnnotation({ value: a.cfi }).catch?.(() => {});
+          for (const a of visibleRef.current)
+            view.addAnnotation({ value: a.cfi }).catch?.(() => {});
         });
         view.addEventListener("draw-annotation", (e: CustomEvent) => {
           const { draw, annotation } = e.detail;
           const owner = byCfiRef.current.get(annotation.value)?.[0];
-          draw(Overlayer.highlight, { color: owner ? colorOfRef.current(owner.reader_id) : "#F5CB2E" });
+          draw(Overlayer.highlight, {
+            color: owner ? colorOfRef.current(owner.reader_id) : "#F5CB2E",
+          });
         });
         view.addEventListener("show-annotation", (e: CustomEvent) => {
           annTapAt.current = Date.now();
@@ -446,7 +556,8 @@ function Reader() {
         setToc((view.book.toc ?? []) as TocItem[]);
         // First time in this book: skip the cover, license and contents, start at chapter one.
         const start =
-          (joinOnOpen && theirs?.cfi ? theirs.cfi : mine?.cfi) ?? findStoryStart((view.book.toc ?? []) as TocItem[], b.data.title);
+          (joinOnOpen && theirs?.cfi ? theirs.cfi : mine?.cfi) ??
+          findStoryStart((view.book.toc ?? []) as TocItem[], b.data.title);
         await view.init({ lastLocation: start, showTextStart: !start });
         if (cancelled) return;
         setStatus("ready");
@@ -487,17 +598,31 @@ function Reader() {
     if (status !== "ready" || !view) return;
     view.renderer.setStyles?.(bookCSS(prefs));
     const night = prefs.theme === "night";
-    view.style.setProperty("--overlayer-highlight-opacity", night ? "0.32" : "0.42");
-    view.style.setProperty("--overlayer-highlight-blend-mode", night ? "normal" : "multiply");
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.bg);
-    return () => document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#FFF8E1");
+    view.style.setProperty(
+      "--overlayer-highlight-opacity",
+      night ? "0.32" : "0.42",
+    );
+    view.style.setProperty(
+      "--overlayer-highlight-blend-mode",
+      night ? "normal" : "multiply",
+    );
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", theme.bg);
+    return () =>
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute("content", barColor());
   }, [prefs, status, theme.bg]);
 
   // ---- Live: tell my partner I'm here, and follow them if asked --------------
   useEffect(() => {
     setActivity({ bookId: id, following });
   }, [id, following, setActivity]);
-  useEffect(() => () => setActivity({ bookId: null, following: false }), [setActivity]);
+  useEffect(
+    () => () => setActivity({ bookId: null, following: false }),
+    [setActivity],
+  );
 
   const wasHere = useRef(false);
   const greeted = useRef(false);
@@ -516,7 +641,11 @@ function Reader() {
   }, [partnerHere, partner, id, sendPosition, status, toast]);
 
   useEffect(() => {
-    if (following && partnerLive?.bookId === id && partnerLive.cfi !== locRef.current?.cfi) {
+    if (
+      following &&
+      partnerLive?.bookId === id &&
+      partnerLive.cfi !== locRef.current?.cfi
+    ) {
       viewRef.current?.goTo(partnerLive.cfi);
     }
   }, [following, partnerLive, id]);
@@ -528,42 +657,86 @@ function Reader() {
       .channel(`book:${id}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "annotations", filter: `book_id=eq.${id}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "annotations",
+          filter: `book_id=eq.${id}`,
+        },
         ({ new: a }) => {
-          setAnns((all) => [...all.filter((x) => x.id !== a.id), a as Annotation]);
-          if (a.reader_id === partner.id && onPage(a.cfi, locRef.current?.cfi)) {
+          setAnns((all) => [
+            ...all.filter((x) => x.id !== a.id),
+            a as Annotation,
+          ]);
+          if (
+            a.reader_id === partner.id &&
+            onPage(a.cfi, locRef.current?.cfi)
+          ) {
             // On the page you're reading: their bot peeks in instead of a message
             markSeen([a.id]);
-            showPeek({ color: partner.color, mood: a.note ? "love" : "happy", side: "right", label: partner.name });
+            showPeek({
+              color: partner.color,
+              mood: a.note ? "love" : "happy",
+              side: "right",
+              label: partner.name,
+            });
             haptic("bump");
           } else if (
             a.reader_id === partner.id &&
-            a.fraction <= Math.max(maxRef.current, locRef.current?.fraction ?? 0) + SPOILER_SLACK
+            a.fraction <=
+              Math.max(maxRef.current, locRef.current?.fraction ?? 0) +
+                SPOILER_SLACK
           ) {
-            toast(`${partner.name} ${a.note ? "left a note" : "highlighted something"} ${a.emoji ?? "💛"}`);
+            toast(
+              `${partner.name} ${a.note ? "left a note" : "highlighted something"} ${a.emoji ?? "💛"}`,
+            );
             haptic("bump");
           }
         },
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "annotations", filter: `book_id=eq.${id}` },
-        ({ new: a }) => setAnns((all) => all.map((x) => (x.id === a.id ? (a as Annotation) : x))),
-      )
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "annotations" }, ({ old }) =>
-        setAnns((all) => all.filter((x) => x.id !== old.id)),
-      )
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "replies" }, ({ new: r }) =>
-        setReplies((all) => [...all.filter((x) => x.id !== r.id), r as Reply]),
-      )
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "replies" }, ({ old }) =>
-        setReplies((all) => all.filter((x) => x.id !== old.id)),
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "annotations",
+          filter: `book_id=eq.${id}`,
+        },
+        ({ new: a }) =>
+          setAnns((all) =>
+            all.map((x) => (x.id === a.id ? (a as Annotation) : x)),
+          ),
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "progress", filter: `book_id=eq.${id}` },
+        { event: "DELETE", schema: "public", table: "annotations" },
+        ({ old }) => setAnns((all) => all.filter((x) => x.id !== old.id)),
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "replies" },
+        ({ new: r }) =>
+          setReplies((all) => [
+            ...all.filter((x) => x.id !== r.id),
+            r as Reply,
+          ]),
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "replies" },
+        ({ old }) => setReplies((all) => all.filter((x) => x.id !== old.id)),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "progress",
+          filter: `book_id=eq.${id}`,
+        },
         ({ new: p }) => {
-          if ((p as Progress)?.reader_id === partner.id) setPartnerProg(p as Progress);
+          if ((p as Progress)?.reader_id === partner.id)
+            setPartnerProg(p as Progress);
         },
       )
       .subscribe();
@@ -575,7 +748,10 @@ function Reader() {
   // Partner notes show up to whichever is further: what you've read, or the page you're on now.
   const seenUpTo = Math.max(maxFraction, loc?.fraction ?? 0);
   const visible = useMemo(
-    () => anns.filter((a) => a.reader_id === me?.id || a.fraction <= seenUpTo + SPOILER_SLACK),
+    () =>
+      anns.filter(
+        (a) => a.reader_id === me?.id || a.fraction <= seenUpTo + SPOILER_SLACK,
+      ),
     [anns, seenUpTo, me?.id],
   );
   const lockedCount = anns.length - visible.length;
@@ -588,14 +764,23 @@ function Reader() {
     const view = viewRef.current;
     if (status !== "ready" || !view) return;
     const want = new Set(map.keys());
-    for (const cfi of drawnRef.current) if (!want.has(cfi)) view.deleteAnnotation({ value: cfi }).catch?.(() => {});
+    for (const cfi of drawnRef.current)
+      if (!want.has(cfi))
+        view.deleteAnnotation({ value: cfi }).catch?.(() => {});
     // Redraw all, so colors stay right when two notes share a spot
-    for (const cfi of want) view.addAnnotation({ value: cfi }).catch?.(() => {});
+    for (const cfi of want)
+      view.addAnnotation({ value: cfi }).catch?.(() => {});
     drawnRef.current = want;
   }, [visible, status]);
 
   // ---- Actions ---------------------------------------------------------------
-  async function createAnnotation({ note, emoji }: { note?: string; emoji?: string }) {
+  async function createAnnotation({
+    note,
+    emoji,
+  }: {
+    note?: string;
+    emoji?: string;
+  }) {
     haptic("success");
     const view = viewRef.current;
     const s = selection;
@@ -613,9 +798,21 @@ function Reader() {
     view.deselect();
     setSelection(null);
     setComposer(false);
-    const { data, error } = await supabase.from("annotations").insert(row).select().single();
-    if (error) return toast(isOffline() ? "You’re offline. Try again when connected." : "Couldn’t save");
-    setAnns((all) => [...all.filter((x) => x.id !== data.id), data as Annotation]);
+    const { data, error } = await supabase
+      .from("annotations")
+      .insert(row)
+      .select()
+      .single();
+    if (error)
+      return toast(
+        isOffline()
+          ? "You’re offline. Try again when connected."
+          : "Couldn’t save",
+      );
+    setAnns((all) => [
+      ...all.filter((x) => x.id !== data.id),
+      data as Annotation,
+    ]);
   }
 
   // Bookmarks on the page you're looking at
@@ -625,7 +822,9 @@ function Reader() {
     try {
       const start = collapse(pageCfi);
       const end = collapse(pageCfi, true);
-      return bookmarks.filter((b) => compare(b.cfi, start) >= 0 && compare(b.cfi, end) <= 0);
+      return bookmarks.filter(
+        (b) => compare(b.cfi, start) >= 0 && compare(b.cfi, end) <= 0,
+      );
     } catch {
       return [];
     }
@@ -635,7 +834,11 @@ function Reader() {
   useEffect(() => {
     if (status !== "ready" || !pageCfi || !partner || !me || showTip) return;
     const fresh = visible.filter(
-      (a) => a.reader_id === partner.id && (a.note || a.emoji) && !seen().has(a.id) && onPage(a.cfi, pageCfi),
+      (a) =>
+        a.reader_id === partner.id &&
+        (a.note || a.emoji) &&
+        !seen().has(a.id) &&
+        onPage(a.cfi, pageCfi),
     );
     if (!fresh.length) return;
     markSeen(fresh.map((a) => a.id));
@@ -645,7 +848,14 @@ function Reader() {
 
   // Late at night, after a few pages: offer a goodnight bookmark (once a night)
   useEffect(() => {
-    if (status !== "ready" || showTip || goodnight || pageTurns.current < 2 || !isNight()) return;
+    if (
+      status !== "ready" ||
+      showTip ||
+      goodnight ||
+      pageTurns.current < 2 ||
+      !isNight()
+    )
+      return;
     if (localStorage.getItem(nightKey())) return;
     localStorage.setItem(nightKey(), "1");
     // eslint-disable-next-line react-hooks/set-state-in-effect -- shown in response to reading, once a night
@@ -672,13 +882,26 @@ function Reader() {
       return;
     }
     const excerpt =
-      (viewRef.current?.lastLocation?.range?.toString() ?? "").replace(/\s+/g, " ").trim().slice(0, 140) || null;
+      (viewRef.current?.lastLocation?.range?.toString() ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 140) || null;
     const { data } = await supabase
       .from("bookmarks")
-      .insert({ book_id: id, reader_id: me.id, cfi: collapse(l.cfi), fraction: l.fraction, chapter: l.chapter, excerpt })
+      .insert({
+        book_id: id,
+        reader_id: me.id,
+        cfi: collapse(l.cfi),
+        fraction: l.fraction,
+        chapter: l.chapter,
+        excerpt,
+      })
       .select()
       .single();
-    if (data) setBookmarks((all) => [...all, data as Bookmark].sort((a, b) => a.fraction - b.fraction));
+    if (data)
+      setBookmarks((all) =>
+        [...all, data as Bookmark].sort((a, b) => a.fraction - b.fraction),
+      );
     else if (isOffline()) toast("You’re offline. Try again when connected.");
   }
 
@@ -703,18 +926,35 @@ function Reader() {
   if (!me || !partner) return <div className="fixed inset-0 bg-cream" />;
 
   return (
-    <div className="fixed inset-0 overflow-hidden" style={{ background: theme.bg, color: theme.fg }}>
+    <div
+      className="fixed inset-0 overflow-hidden"
+      style={{ background: theme.bg, color: theme.fg }}
+    >
       {/* The book */}
       <div
         ref={hostRef}
         className="absolute inset-x-0"
-        style={{ top: "env(safe-area-inset-top)", bottom: "env(safe-area-inset-bottom)" }}
+        // Book pages are see-through and use a light color scheme; keep their frame on the same
+        // scheme, or browsers paint a solid white backing behind them in dark mode.
+        style={{
+          top: "env(safe-area-inset-top)",
+          bottom: "env(safe-area-inset-bottom)",
+          colorScheme: "light",
+        }}
       />
 
       {status === "loading" && (
-        <div className="absolute inset-0 grid place-items-center">
+        // covers the book while it opens, so the first page doesn't show through
+        <div
+          className="absolute inset-0 z-10 grid place-items-center"
+          style={{ background: theme.bg }}
+        >
           <div className="text-center">
-            <img src="/icons/icon-192.png" alt="" className="mx-auto size-16 animate-pulse rounded-2xl" />
+            <img
+              src="/icons/icon-192.png"
+              alt=""
+              className="mx-auto size-16 animate-pulse rounded-2xl"
+            />
             <p className="mt-3 text-sm" style={{ color: theme.muted }}>
               Opening {book?.title ?? "your book"}…
             </p>
@@ -737,18 +977,28 @@ function Reader() {
       {status === "ready" && !chrome && (
         <div
           className="pointer-events-none absolute inset-x-0 flex items-center justify-between gap-4 px-6 text-[11px]"
-          style={{ bottom: "env(safe-area-inset-bottom)", height: 40, color: theme.muted }}
+          style={{
+            bottom: "env(safe-area-inset-bottom)",
+            height: 40,
+            color: theme.muted,
+          }}
         >
           <span className="truncate">{loc?.chapter ?? ""}</span>
           <span className="flex shrink-0 items-center gap-2 tabular-nums">
             {partnerPos && (
               <span className="flex items-center gap-1">
-                <span className="inline-block size-2 rounded-full" style={{ background: partner.color }} />
+                <span
+                  className="inline-block size-2 rounded-full"
+                  style={{ background: partner.color }}
+                />
                 {pct(partnerPos.fraction)}
               </span>
             )}
             <span className="flex items-center gap-1">
-              <span className="inline-block size-2 rounded-full" style={{ background: me.color }} />
+              <span
+                className="inline-block size-2 rounded-full"
+                style={{ background: me.color }}
+              />
               {pct(loc?.fraction)}
             </span>
           </span>
@@ -776,12 +1026,19 @@ function Reader() {
           className={`absolute left-1/2 z-20 flex h-9 -translate-x-1/2 items-center gap-2 rounded-full pr-3.5 pl-1 text-xs font-medium transition-[translate,opacity] duration-300 ease-out ${g} ${
             chrome ? "pointer-events-none -translate-y-3 opacity-0" : ""
           }`}
-          style={{ top: "calc(env(safe-area-inset-top) + 10px)", color: theme.fg }}
+          style={{
+            top: "calc(env(safe-area-inset-top) + 10px)",
+            color: theme.fg,
+          }}
         >
           <span className="live-pulse rounded-full">
             <Avatar reader={partner} size={26} mood="reading" />
           </span>
-          {following ? `Following ${partner.name}` : partnerFollowingMe ? `${partner.name} is following you` : `${partner.name} is here`}
+          {following
+            ? `Following ${partner.name}`
+            : partnerFollowingMe
+              ? `${partner.name} is following you`
+              : `${partner.name} is here`}
         </button>
       )}
 
@@ -798,19 +1055,32 @@ function Reader() {
               className={`pointer-events-auto mx-auto flex h-12 max-w-2xl items-center gap-1 rounded-full pr-1.5 pl-1 ${g}`}
               style={{ color: theme.fg }}
             >
-              <Link href="/" className="grid size-10 shrink-0 place-items-center rounded-full hover:bg-black/5" aria-label="Back to shelf">
+              <Link
+                href="/"
+                className="grid size-10 shrink-0 place-items-center rounded-full hover:bg-black/5"
+                aria-label="Back to shelf"
+              >
                 <ChevronLeftIcon className="size-5" />
               </Link>
               <div className="min-w-0 flex-1 leading-tight">
-                <p className="truncate font-serif text-[15px] font-semibold">{book?.title}</p>
-                <p className="truncate text-[11px]" style={{ color: theme.muted }}>
+                <p className="truncate font-serif text-[15px] font-semibold">
+                  {book?.title}
+                </p>
+                <p
+                  className="truncate text-[11px]"
+                  style={{ color: theme.muted }}
+                >
                   {loc?.chapter}
                 </p>
               </div>
               <button
                 onClick={toggleBookmark}
                 className="grid size-10 shrink-0 place-items-center rounded-full"
-                aria-label={pageBookmarks.length ? "Remove bookmark" : "Bookmark this page"}
+                aria-label={
+                  pageBookmarks.length
+                    ? "Remove bookmark"
+                    : "Bookmark this page"
+                }
                 aria-pressed={pageBookmarks.length > 0}
               >
                 <BookmarkIcon
@@ -820,13 +1090,16 @@ function Reader() {
                 />
               </button>
               {offline ? (
-                <span className="flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium" style={{ background: "rgba(127,127,127,.14)" }}>
+                <span
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium"
+                  style={{ background: "rgba(127,127,127,.14)" }}
+                >
                   <CloudOffIcon className="size-3.5" /> Offline
                 </span>
               ) : partnerHere ? (
                 <button
                   onClick={() => setPanel("live")}
-                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink"
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-xs font-semibold text-on-lemon"
                 >
                   <span className="size-2 rounded-full bg-leaf" /> Live
                 </button>
@@ -836,7 +1109,7 @@ function Reader() {
                     haptic("tap");
                     toast(await nudge(id, "read"));
                   }}
-                  className="h-9 shrink-0 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink"
+                  className="h-9 shrink-0 rounded-full bg-lemon px-3.5 text-xs font-semibold text-on-lemon"
                 >
                   Read with me?
                 </button>
@@ -850,10 +1123,21 @@ function Reader() {
               chrome ? "" : "translate-y-[120%] opacity-0"
             }`}
           >
-            <div className={`pointer-events-auto w-full max-w-lg rounded-[28px] px-4 pt-3 pb-1.5 ${g}`} style={{ color: theme.fg }}>
+            <div
+              className={`pointer-events-auto w-full max-w-lg rounded-[28px] px-4 pt-3 pb-1.5 ${g}`}
+              style={{ color: theme.fg }}
+            >
               <ProgressTrack
                 me={{ color: me.color, fraction: loc?.fraction ?? 0 }}
-                partner={partnerPos ? { color: partner.color, fraction: partnerPos.fraction, name: partner.name } : null}
+                partner={
+                  partnerPos
+                    ? {
+                        color: partner.color,
+                        fraction: partnerPos.fraction,
+                        name: partner.name,
+                      }
+                    : null
+                }
                 onSeek={(f) => {
                   rememberSpot();
                   setFollowing(false);
@@ -863,7 +1147,11 @@ function Reader() {
                 muted={theme.muted}
               />
               <div className="mt-2 grid grid-cols-4 text-[10.5px]">
-                <ChromeButton icon={ListIcon} label="Contents" onClick={() => setPanel("toc")} />
+                <ChromeButton
+                  icon={ListIcon}
+                  label="Contents"
+                  onClick={() => setPanel("toc")}
+                />
                 <ChromeButton
                   icon={MessageSquareQuoteIcon}
                   label={visible.length ? `Notes · ${visible.length}` : "Notes"}
@@ -875,7 +1163,11 @@ function Reader() {
                   disabled={!partnerPos}
                   onClick={() => partnerPos && jumpTo(partnerPos.cfi)}
                 />
-                <ChromeButton icon={ALargeSmallIcon} label="Text" onClick={() => setPanel("type")} />
+                <ChromeButton
+                  icon={ALargeSmallIcon}
+                  label="Text"
+                  onClick={() => setPanel("type")}
+                />
               </div>
             </div>
           </div>
@@ -888,16 +1180,25 @@ function Reader() {
       {status === "ready" && goodnight && !chrome && !selection && (
         <div
           className={`sheet-in absolute inset-x-3 z-30 mx-auto flex max-w-md items-center gap-3 rounded-[28px] p-3 ${g}`}
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)", color: theme.fg }}
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom) + 12px)",
+            color: theme.fg,
+          }}
           role="dialog"
           aria-label="Goodnight bookmark"
         >
           <BotHead color={me.color} size={52} mood="sleepy" />
           <p className="min-w-0 flex-1 font-medium">Goodnight bookmark?</p>
-          <button onClick={() => setGoodnight(false)} className="rounded-full px-3 py-2.5 text-sm opacity-70">
+          <button
+            onClick={() => setGoodnight(false)}
+            className="rounded-full px-3 py-2.5 text-sm opacity-70"
+          >
             Not yet
           </button>
-          <button onClick={sayGoodnight} className="rounded-full bg-lemon px-4 py-2.5 text-sm font-semibold text-ink">
+          <button
+            onClick={sayGoodnight}
+            className="rounded-full bg-lemon px-4 py-2.5 text-sm font-semibold text-on-lemon"
+          >
             Goodnight 🌙
           </button>
         </div>
@@ -915,7 +1216,10 @@ function Reader() {
             viewRef.current?.goTo(target);
           }}
           className={`fade-in absolute left-1/2 z-20 flex h-9 max-w-[80vw] -translate-x-1/2 items-center gap-1.5 rounded-full px-3.5 text-xs font-medium ${g}`}
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 44px)", color: theme.fg }}
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom) + 44px)",
+            color: theme.fg,
+          }}
         >
           <Undo2Icon className="size-4 shrink-0" />
           <span className="truncate">{returnTo.label}</span>
@@ -926,7 +1230,13 @@ function Reader() {
       {showTip && (
         <button
           className="fade-in absolute inset-0 z-40 grid grid-cols-[28%_1fr_28%] text-sm font-medium"
-          style={{ background: prefs.theme === "night" ? "rgb(28 26 22 / .88)" : "rgb(255 253 245 / .9)", color: theme.fg }}
+          style={{
+            background:
+              prefs.theme === "night"
+                ? "rgb(28 26 22 / .88)"
+                : "rgb(255 253 245 / .9)",
+            color: theme.fg,
+          }}
           onClick={() => {
             localStorage.setItem("lemon-tip-reader", "1");
             setShowTip(false);
@@ -951,7 +1261,10 @@ function Reader() {
       {selection && !composer && (
         <div
           className={`sheet-in absolute inset-x-3 z-30 mx-auto max-w-md rounded-[28px] p-2.5 ${g}`}
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)", color: theme.fg }}
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom) + 12px)",
+            color: theme.fg,
+          }}
           onPointerDown={(e) => e.preventDefault()}
         >
           <div className="flex justify-between px-1">
@@ -975,7 +1288,7 @@ function Reader() {
             </button>
             <button
               onClick={() => setComposer(true)}
-              className="flex h-11 items-center justify-center gap-1.5 rounded-full bg-lemon text-ink"
+              className="flex h-11 items-center justify-center gap-1.5 rounded-full bg-lemon text-on-lemon"
             >
               <PenLineIcon className="size-4" /> Note
             </button>
@@ -1003,7 +1316,11 @@ function Reader() {
       />
 
       {/* A highlight was tapped */}
-      <Sheet open={!!openCfi && openList.length > 0} onClose={() => setOpenCfi(null)} tone={prefs.theme === "night" ? "dark" : "light"}>
+      <Sheet
+        open={!!openCfi && openList.length > 0}
+        onClose={() => setOpenCfi(null)}
+        tone={prefs.theme === "night" ? "dark" : "light"}
+      >
         {openList.length > 0 && (
           <AnnotationThread
             list={openList}
@@ -1015,8 +1332,12 @@ function Reader() {
               setAnns((all) => all.filter((x) => x.id !== annId));
               if (openList.length <= 1) setOpenCfi(null);
             }}
-            onReply={(r) => setReplies((all) => [...all.filter((x) => x.id !== r.id), r])}
-            onUpdated={(a) => setAnns((all) => all.map((x) => (x.id === a.id ? a : x)))}
+            onReply={(r) =>
+              setReplies((all) => [...all.filter((x) => x.id !== r.id), r])
+            }
+            onUpdated={(a) =>
+              setAnns((all) => all.map((x) => (x.id === a.id ? a : x)))
+            }
             onError={toast}
             onCard={(a) => {
               setOpenCfi(null);
@@ -1026,36 +1347,73 @@ function Reader() {
         )}
       </Sheet>
 
-      <QuoteCard annotation={cardFor} book={book} me={me} partner={partner} onClose={() => setCardFor(null)} />
+      <QuoteCard
+        annotation={cardFor}
+        book={book}
+        me={me}
+        partner={partner}
+        onClose={() => setCardFor(null)}
+      />
 
-      <Sheet open={panel === "notes"} onClose={() => setPanel(null)} title="Notes" tone={prefs.theme === "night" ? "dark" : "light"}>
+      <Sheet
+        open={panel === "notes"}
+        onClose={() => setPanel(null)}
+        title="Notes"
+        tone={prefs.theme === "night" ? "dark" : "light"}
+      >
         {visible.length === 0 && (
           <p className="text-sm opacity-70">Select text to highlight</p>
         )}
         <div className="space-y-3">
           {visible.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => {
-                jumpTo(a.cfi);
-                setTimeout(() => setOpenCfi(a.cfi), 450);
-              }}
-              className="block w-full rounded-2xl p-3 text-left"
-              style={{ background: "rgba(127,127,127,.08)" }}
-            >
-              <div className="flex items-center gap-2 text-xs opacity-70">
-                <BotHead color={colorOf(a.reader_id)} size={18} />
-                {nameOf(a.reader_id)} · {a.chapter ?? pct(a.fraction)}
-                {a.emoji && <span className="ml-auto text-base">{a.emoji}</span>}
-              </div>
-              <p className="mt-1.5 line-clamp-3 font-serif text-[15px] italic leading-snug">“{a.quote}”</p>
-              {a.note && <p className="mt-1.5 text-sm">{a.note}</p>}
-              {replies.some((r) => r.annotation_id === a.id) && (
-                <p className="mt-1 text-xs opacity-60">
-                  💬 {replies.filter((r) => r.annotation_id === a.id).length}
+            <div key={a.id} className="relative">
+              <button
+                onClick={() => {
+                  jumpTo(a.cfi);
+                  setTimeout(() => setOpenCfi(a.cfi), 450);
+                }}
+                className={`block w-full rounded-2xl p-3 text-left ${a.reader_id === me.id ? "pr-12" : ""}`}
+                style={{ background: "rgba(127,127,127,.08)" }}
+              >
+                <div className="flex items-center gap-2 text-xs opacity-70">
+                  <BotHead color={colorOf(a.reader_id)} size={18} />
+                  {nameOf(a.reader_id)} · {a.chapter ?? pct(a.fraction)}
+                  {a.emoji && (
+                    <span className="ml-auto text-base">{a.emoji}</span>
+                  )}
+                </div>
+                <p className="mt-1.5 line-clamp-3 font-serif text-[15px] italic leading-snug">
+                  “{a.quote}”
                 </p>
+                {a.note && <p className="mt-1.5 text-sm">{a.note}</p>}
+                {replies.some((r) => r.annotation_id === a.id) && (
+                  <p className="mt-1 text-xs opacity-60">
+                    💬 {replies.filter((r) => r.annotation_id === a.id).length}
+                  </p>
+                )}
+              </button>
+              {a.reader_id === me.id && (
+                <ConfirmButton
+                  ariaLabel="Delete highlight"
+                  confirmLabel="Delete?"
+                  className="absolute top-2 right-2 grid h-8 min-w-8 place-items-center rounded-full px-2 text-xs font-semibold opacity-70"
+                  onConfirm={async () => {
+                    const { error } = await supabase
+                      .from("annotations")
+                      .delete()
+                      .eq("id", a.id);
+                    if (error)
+                      return toast(
+                        isOffline() ? "You’re offline" : "Couldn’t delete",
+                      );
+                    setAnns((all) => all.filter((x) => x.id !== a.id));
+                    toast("Deleted");
+                  }}
+                >
+                  <Trash2Icon className="size-4" />
+                </ConfirmButton>
               )}
-            </button>
+            </div>
           ))}
         </div>
         {lockedCount > 0 && (
@@ -1065,12 +1423,24 @@ function Reader() {
         )}
       </Sheet>
 
-      <Sheet open={panel === "toc"} onClose={() => setPanel(null)} tone={prefs.theme === "night" ? "dark" : "light"}>
-        <div className="mb-4 grid grid-cols-2 rounded-full p-1 text-sm font-medium" style={{ background: "rgba(127,127,127,.12)" }}>
+      <Sheet
+        open={panel === "toc"}
+        onClose={() => setPanel(null)}
+        tone={prefs.theme === "night" ? "dark" : "light"}
+      >
+        <div
+          className="mb-4 grid grid-cols-2 rounded-full p-1 text-sm font-medium"
+          style={{ background: "rgba(127,127,127,.12)" }}
+        >
           {(
             [
               ["chapters", "Chapters"],
-              ["bookmarks", bookmarks.length ? `Bookmarks · ${bookmarks.length}` : "Bookmarks"],
+              [
+                "bookmarks",
+                bookmarks.length
+                  ? `Bookmarks · ${bookmarks.length}`
+                  : "Bookmarks",
+              ],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -1095,17 +1465,34 @@ function Reader() {
             }}
           />
         ) : bookmarks.length === 0 ? (
-          <p className="py-6 text-center text-sm opacity-60">Tap the bookmark at the top to save a page</p>
+          <p className="py-6 text-center text-sm opacity-60">
+            Tap the bookmark at the top to save a page
+          </p>
         ) : (
           <ul className="space-y-2">
             {bookmarks.map((b) => (
-              <li key={b.id} className="flex items-start gap-1 rounded-2xl p-3" style={{ background: "rgba(127,127,127,.08)" }}>
-                <button className="min-w-0 flex-1 text-left" onClick={() => jumpTo(b.cfi)}>
+              <li
+                key={b.id}
+                className="flex items-start gap-1 rounded-2xl p-3"
+                style={{ background: "rgba(127,127,127,.08)" }}
+              >
+                <button
+                  className="min-w-0 flex-1 text-left"
+                  onClick={() => jumpTo(b.cfi)}
+                >
                   <p className="flex items-center gap-1.5 text-xs opacity-60">
-                    <BookmarkIcon className="size-3.5" fill={me.color} stroke={me.color} />
+                    <BookmarkIcon
+                      className="size-3.5"
+                      fill={me.color}
+                      stroke={me.color}
+                    />
                     {b.chapter ?? pct(b.fraction)} · {pct(b.fraction)}
                   </p>
-                  {b.excerpt && <p className="mt-1 line-clamp-2 font-serif text-[15px] leading-snug">{b.excerpt}</p>}
+                  {b.excerpt && (
+                    <p className="mt-1 line-clamp-2 font-serif text-[15px] leading-snug">
+                      {b.excerpt}
+                    </p>
+                  )}
                 </button>
                 <button
                   aria-label="Remove bookmark"
@@ -1123,7 +1510,12 @@ function Reader() {
         )}
       </Sheet>
 
-      <Sheet open={panel === "type"} onClose={() => setPanel(null)} title="Text" tone={prefs.theme === "night" ? "dark" : "light"}>
+      <Sheet
+        open={panel === "type"}
+        onClose={() => setPanel(null)}
+        title="Text"
+        tone={prefs.theme === "night" ? "dark" : "light"}
+      >
         <div className="space-y-5">
           <div className="grid grid-cols-3 gap-2">
             {(Object.keys(THEMES) as Prefs["theme"][]).map((t) => (
@@ -1134,7 +1526,11 @@ function Reader() {
                 style={{
                   background: THEMES[t].bg,
                   color: THEMES[t].fg,
-                  boxShadow: prefs.theme === t ? "0 0 0 2px #E0AD00" : "0 0 0 1px rgba(127,127,127,.25)",
+                  // inset, so the outline isn't clipped by the sheet's edge
+                  boxShadow:
+                    prefs.theme === t
+                      ? "inset 0 0 0 2px #E0AD00"
+                      : "inset 0 0 0 1px rgba(127,127,127,.25)",
                 }}
               >
                 {THEMES[t].label}
@@ -1149,7 +1545,9 @@ function Reader() {
             >
               A−
             </button>
-            <span className="w-14 text-center text-sm tabular-nums">{prefs.size}%</span>
+            <span className="w-14 text-center text-sm tabular-nums">
+              {prefs.size}%
+            </span>
             <button
               onClick={() => setPrefs({ size: Math.min(180, prefs.size + 10) })}
               className="h-11 flex-1 rounded-2xl text-lg"
@@ -1171,9 +1569,15 @@ function Reader() {
                 onClick={() => setPrefs({ font: f })}
                 className="rounded-2xl py-3"
                 style={{
-                  fontFamily: f === "sans" ? "ui-sans-serif, system-ui" : f === "serif" ? "ui-serif, Georgia" : undefined,
+                  fontFamily:
+                    f === "sans"
+                      ? "ui-sans-serif, system-ui"
+                      : f === "serif"
+                        ? "ui-serif, Georgia"
+                        : undefined,
                   background: "rgba(127,127,127,.12)",
-                  boxShadow: prefs.font === f ? "0 0 0 2px #E0AD00" : undefined,
+                  boxShadow:
+                    prefs.font === f ? "inset 0 0 0 2px #E0AD00" : undefined,
                 }}
               >
                 {label}
@@ -1193,7 +1597,7 @@ function Reader() {
           <div className="space-y-2">
             <button
               onClick={() => partnerPos && jumpTo(partnerPos.cfi)}
-              className="w-full rounded-2xl bg-lemon px-4 py-3.5 text-left font-semibold text-ink"
+              className="w-full rounded-2xl bg-lemon px-4 py-3.5 text-left font-semibold text-on-lemon"
             >
               Go to {partner.name}’s page
             </button>
@@ -1202,14 +1606,19 @@ function Reader() {
               onClick={() => {
                 setFollowing((f) => !f);
                 setPanel(null);
-                if (!following && partnerPos) viewRef.current?.goTo(partnerPos.cfi);
+                if (!following && partnerPos)
+                  viewRef.current?.goTo(partnerPos.cfi);
               }}
               className="w-full rounded-2xl px-4 py-3.5 text-left font-semibold disabled:opacity-50"
               style={{ background: "rgba(127,127,127,.12)" }}
             >
-              {following ? "Stop following" : `Follow ${partner.name}’s page turns`}
+              {following
+                ? "Stop following"
+                : `Follow ${partner.name}’s page turns`}
               {partnerFollowingMe && (
-                <span className="block text-xs font-normal opacity-70">{partner.name} is following you</span>
+                <span className="block text-xs font-normal opacity-70">
+                  {partner.name} is following you
+                </span>
               )}
             </button>
           </div>
@@ -1260,8 +1669,14 @@ function ProgressTrack({
   return (
     <div>
       <div className="relative h-9">
-        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full" style={{ background: "rgba(127,127,127,.2)" }}>
-          <div className="h-full rounded-full" style={{ width: pct(value), background: me.color }} />
+        <div
+          className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full"
+          style={{ background: "rgba(127,127,127,.2)" }}
+        >
+          <div
+            className="h-full rounded-full"
+            style={{ width: pct(value), background: me.color }}
+          />
         </div>
         {partner && (
           <button
@@ -1296,7 +1711,10 @@ function ProgressTrack({
           style={{ left: pct(value), background: me.color }}
         />
       </div>
-      <div className="flex justify-between text-[11px] tabular-nums" style={{ color: muted }}>
+      <div
+        className="flex justify-between text-[11px] tabular-nums"
+        style={{ color: muted }}
+      >
         <span>You · {pct(value)}</span>
         {partner && (
           <span>
@@ -1308,7 +1726,17 @@ function ProgressTrack({
   );
 }
 
-function TocList({ items, current, onGo, depth = 0 }: { items: TocItem[]; current: string | null; onGo: (href: string) => void; depth?: number }) {
+function TocList({
+  items,
+  current,
+  onGo,
+  depth = 0,
+}: {
+  items: TocItem[];
+  current: string | null;
+  onGo: (href: string) => void;
+  depth?: number;
+}) {
   return (
     <ul className={depth ? "ml-4" : ""}>
       {items.map((it, i) => (
@@ -1319,7 +1747,14 @@ function TocList({ items, current, onGo, depth = 0 }: { items: TocItem[]; curren
           >
             {it.label?.trim()}
           </button>
-          {it.subitems?.length ? <TocList items={it.subitems} current={current} onGo={onGo} depth={depth + 1} /> : null}
+          {it.subitems?.length ? (
+            <TocList
+              items={it.subitems}
+              current={current}
+              onGo={onGo}
+              depth={depth + 1}
+            />
+          ) : null}
         </li>
       ))}
     </ul>
@@ -1348,7 +1783,9 @@ function NoteComposer({
       }}
       title="Note"
     >
-      <p className="line-clamp-3 border-l-4 border-lemon pl-3 font-serif text-[15px] italic text-ink/80">“{quote}”</p>
+      <p className="line-clamp-3 border-l-4 border-lemon pl-3 font-serif text-[15px] italic text-ink/80">
+        “{quote}”
+      </p>
       <textarea
         autoFocus
         value={text}
@@ -1375,7 +1812,7 @@ function NoteComposer({
           setText("");
           setEmoji(undefined);
         }}
-        className="mt-4 w-full rounded-2xl bg-lemon py-3.5 font-semibold disabled:opacity-50"
+        className="mt-4 w-full rounded-2xl bg-lemon py-3.5 font-semibold disabled:opacity-50 text-on-lemon"
       >
         Save note
       </button>
@@ -1413,7 +1850,10 @@ function AnnotationThread({
 
   return (
     <div>
-      <p className="border-l-4 pl-3 font-serif text-[16px] italic leading-relaxed" style={{ borderColor: colorOf(first.reader_id) }}>
+      <p
+        className="border-l-4 pl-3 font-serif text-[16px] italic leading-relaxed"
+        style={{ borderColor: colorOf(first.reader_id) }}
+      >
         “{first.quote}”
       </p>
       <button
@@ -1427,7 +1867,11 @@ function AnnotationThread({
       <div className="mt-4 space-y-3">
         {list.map((a) => (
           <div key={a.id} className="flex gap-2.5">
-            <BotHead color={colorOf(a.reader_id)} size={28} mood={a.reader_id === meId ? "idle" : "love"} />
+            <BotHead
+              color={colorOf(a.reader_id)}
+              size={28}
+              mood={a.reader_id === meId ? "idle" : "love"}
+            />
             <div className="min-w-0 flex-1">
               <p className="text-xs opacity-60">
                 {nameOf(a.reader_id)} · {timeAgo(a.created_at)} {a.emoji}
@@ -1441,7 +1885,7 @@ function AnnotationThread({
                     className="w-full resize-none rounded-xl border border-current/20 bg-transparent p-2 outline-none"
                   />
                   <button
-                    className="mt-1 rounded-full bg-lemon px-3 py-1 text-sm font-semibold text-ink"
+                    className="mt-1 rounded-full bg-lemon px-3 py-1 text-sm font-semibold text-on-lemon"
                     onClick={async () => {
                       const { data } = await supabase
                         .from("annotations")
@@ -1457,26 +1901,61 @@ function AnnotationThread({
                   </button>
                 </div>
               ) : (
-                <p className="mt-0.5">{a.note ?? <span className="opacity-50">Highlighted</span>}</p>
+                <p className="mt-0.5">
+                  {a.note ?? <span className="opacity-50">Highlighted</span>}
+                </p>
               )}
               {a.reader_id === meId && editing !== a.id && (
-                <div className="mt-1 flex gap-3 text-xs opacity-60">
+                <div className="mt-2 flex flex-wrap gap-1.5 text-xs font-medium">
                   <button
+                    className="flex items-center gap-1 rounded-full px-3 py-1.5"
+                    style={{ background: "rgba(127,127,127,.14)" }}
                     onClick={() => {
                       setEditing(a.id);
                       setEditText(a.note ?? "");
                     }}
                   >
-                    {a.note ? "Edit" : "Add note"}
+                    <PenLineIcon className="size-3.5" />{" "}
+                    {a.note ? "Edit note" : "Add note"}
                   </button>
-                  <button
-                    onClick={async () => {
-                      const { error } = await supabase.from("annotations").delete().eq("id", a.id);
-                      if (!error) onDeleted(a.id);
+                  {(a.note || a.emoji) && (
+                    <button
+                      className="rounded-full px-3 py-1.5"
+                      style={{ background: "rgba(127,127,127,.14)" }}
+                      onClick={async () => {
+                        const { data, error } = await supabase
+                          .from("annotations")
+                          .update({ note: null, emoji: null })
+                          .eq("id", a.id)
+                          .select()
+                          .single();
+                        if (error || !data)
+                          return onError(
+                            isOffline() ? "You’re offline" : "Couldn’t remove",
+                          );
+                        onUpdated(data as Annotation);
+                      }}
+                    >
+                      Remove note
+                    </button>
+                  )}
+                  <ConfirmButton
+                    className="flex items-center gap-1 rounded-full bg-red-500/10 px-3 py-1.5 text-red-700 dark:text-red-300"
+                    ariaLabel="Delete highlight"
+                    onConfirm={async () => {
+                      const { error } = await supabase
+                        .from("annotations")
+                        .delete()
+                        .eq("id", a.id);
+                      if (error)
+                        return onError(
+                          isOffline() ? "You’re offline" : "Couldn’t delete",
+                        );
+                      onDeleted(a.id);
                     }}
                   >
-                    Delete
-                  </button>
+                    <Trash2Icon className="size-3.5" /> Delete
+                  </ConfirmButton>
                 </div>
               )}
             </div>
@@ -1503,10 +1982,19 @@ function AnnotationThread({
           if (!text.trim()) return;
           const { data } = await supabase
             .from("replies")
-            .insert({ annotation_id: first.id, reader_id: meId, body: text.trim() })
+            .insert({
+              annotation_id: first.id,
+              reader_id: meId,
+              body: text.trim(),
+            })
             .select()
             .single();
-          if (!data) return onError(isOffline() ? "You’re offline. Try again when connected." : "Couldn’t send");
+          if (!data)
+            return onError(
+              isOffline()
+                ? "You’re offline. Try again when connected."
+                : "Couldn’t send",
+            );
           onReply(data as Reply);
           setText("");
         }}
@@ -1517,7 +2005,9 @@ function AnnotationThread({
           placeholder="Reply…"
           className="min-w-0 flex-1 rounded-full border border-current/15 bg-transparent px-4 py-2.5 outline-none"
         />
-        <button className="rounded-full bg-lemon px-4 font-semibold text-ink">Send</button>
+        <button className="rounded-full bg-lemon px-4 font-semibold text-on-lemon">
+          Send
+        </button>
       </form>
     </div>
   );

@@ -1,6 +1,6 @@
 /** Frosted glass, shared by everything that floats. No shadows: a thin border sets it apart. */
 export const glass =
-  "border border-ink/10 bg-white/60 backdrop-blur-xl backdrop-saturate-150";
+  "border border-ink/10 bg-white/60 dark:bg-[#211e17]/60 backdrop-blur-xl backdrop-saturate-150";
 
 /** The same glass for the Night reading theme. */
 export const glassDark =
@@ -8,7 +8,7 @@ export const glassDark =
 
 /** A denser glass for small messages that can land on top of book text. */
 export const glassDense =
-  "border border-ink/10 bg-[#fffdf5]/97 backdrop-blur-xl backdrop-saturate-150";
+  "border border-ink/10 bg-[#fffdf5]/97 dark:bg-[#211e17]/97 backdrop-blur-xl backdrop-saturate-150";
 
 /*
  * Inside the reader the book lives in an iframe, and Safari doesn't blur iframe content

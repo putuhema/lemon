@@ -1,16 +1,39 @@
 @import "tailwindcss";
 
-@theme {
-  --color-cream: #fff8e1;
-  --color-paper: #fffdf5;
+/* Dark mode: follows the phone, or the choice in your profile (class "dark" on <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --cream: #fff8e1;
+  --paper: #fffdf5;
+  --ink: #2e2a1f;
+  --muted: #8a8170;
+  --leaf: #5f8a3c;
+  color-scheme: light;
+}
+.dark {
+  --cream: #16140f;
+  --paper: #211e17;
+  --ink: #eee6d3;
+  --muted: #9a917e;
+  --leaf: #8bb565;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-cream: var(--cream);
+  --color-paper: var(--paper);
   --color-lemon: #f5cb2e;
   --color-lemon-deep: #e0ad00;
-  --color-leaf: #5f8a3c;
-  --color-ink: #2e2a1f;
-  --color-muted: #8a8170;
+  --color-on-lemon: #2e2a1f; /* text on lemon yellow, dark in both modes */
+  --color-leaf: var(--leaf);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
   --font-serif: var(--font-fraunces), ui-serif, Georgia, serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
+
+
 
 html,
 body {

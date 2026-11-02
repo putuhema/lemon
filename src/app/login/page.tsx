@@ -44,10 +44,10 @@ export default function LoginPage() {
             className="w-full rounded-2xl border border-ink/10 bg-paper px-4 py-3.5 outline-none focus:border-lemon-deep"
             required
           />
-          {error && <p className="text-sm text-red-700">{error}</p>}
+          {error && <p className="text-sm text-red-700 dark:text-red-300">{error}</p>}
           <button
             disabled={busy}
-            className="w-full rounded-2xl bg-lemon py-3.5 font-semibold text-ink transition active:scale-[0.98] disabled:opacity-60"
+            className="w-full rounded-2xl bg-lemon py-3.5 font-semibold transition active:scale-[0.98] disabled:opacity-60 text-on-lemon"
           >
             {busy ? "Opening…" : "Open Lemon"}
           </button>
