@@ -1,4 +1,4 @@
-export type NudgeKind = "read" | "goodnight" | "miss";
+export type NudgeKind = "read" | "goodnight" | "miss" | "night";
 
 export const NUDGES: Record<NudgeKind, { label: string; body: (book?: string) => string }> = {
   read: {
@@ -10,4 +10,8 @@ export const NUDGES: Record<NudgeKind, { label: string; body: (book?: string) =>
     body: () => "wants a bedtime chapter"
   },
   miss: { label: "Thinking of you 💛", body: () => "is thinking of you" },
+  night: {
+    label: "Goodnight 🌙",
+    body: (b) => (b ? `said goodnight from “${b}” 🌙` : "said goodnight 🌙"),
+  },
 };

@@ -11,6 +11,9 @@ import { loadBookFile } from "@/lib/bookCache";
 import { computeStreak, logPages, PAGES_PER_DAY } from "@/lib/streak";
 import { saveProgress, isOffline, useOffline } from "@/lib/offline";
 import { haptic, sinceLastHaptic } from "@/lib/haptics";
+import { localDay } from "@/lib/streak";
+import { PeekBot, type Peek } from "@/components/PeekBot";
+import { QuoteCard } from "@/components/QuoteCard";
 import { bookCSS, DEFAULT_PREFS, THEMES, type Prefs } from "@/lib/readerStyle";
 import type { Annotation, Book, Bookmark, Progress, Reply } from "@/lib/types";
 import { collapse, compare } from "foliate-js/epubcfi.js";
@@ -22,6 +25,7 @@ import { readerGlass, readerGlassDark } from "@/lib/glass";
 import {
   ALargeSmallIcon,
   BookmarkIcon,
+  ImageIcon,
   CloudOffIcon,
   Undo2Icon,
   XIcon,
@@ -94,6 +98,40 @@ function findStoryStart(toc: TocItem[], bookTitle = ""): string | undefined {
   })?.href;
 }
 
+/** Is this spot (a CFI) on the page you're looking at? */
+function onPage(cfi: string, pageCfi?: string | null) {
+  if (!pageCfi) return false;
+  try {
+    const at = collapse(cfi);
+    return compare(at, collapse(pageCfi)) >= 0 && compare(at, collapse(pageCfi, true)) <= 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Late evening counts as "tonight" until 4 am. */
+const isNight = (d = new Date()) => d.getHours() >= 23 || d.getHours() < 4;
+const nightKey = (d = new Date()) => `lemon-goodnight-${localDay(d.getHours() < 4 ? new Date(d.getTime() - 86400000) : d)}`;
+const SEEN_KEY = "lemon-seen-notes";
+
+/** Partner notes you've already reacted to (so heart eyes happen once per note). */
+let seenNotes: Set<string> | null = null;
+function seen() {
+  if (!seenNotes) {
+    try {
+      seenNotes = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]"));
+    } catch {
+      seenNotes = new Set();
+    }
+  }
+  return seenNotes;
+}
+function markSeen(ids: string[]) {
+  const set = seen();
+  ids.forEach((x) => set.add(x));
+  localStorage.setItem(SEEN_KEY, JSON.stringify([...set].slice(-500)));
+}
+
 function rangeFraction(view: any, index: number, range: Range) {
   const fr: number[] = view.getSectionFractions();
   const start = fr[index] ?? 0;
@@ -137,6 +175,19 @@ function Reader() {
   const [returnTo, setReturnTo] = useState<{ cfi: string; label: string } | null>(null);
   const [showTip, setShowTip] = useState(false);
   const returnTurns = useRef<number | null>(null);
+  const [peek, setPeek] = useState<Peek | null>(null);
+  const [goodnight, setGoodnight] = useState(false);
+  const [cardFor, setCardFor] = useState<Annotation | null>(null);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pageTurns = useRef(0);
+
+  /** A bot peeks in from the page edge for a moment. */
+  const showPeek = useCallback((p: Omit<Peek, "key">) => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    setPeek({ ...p, key: Date.now() });
+    peekTimer.current = setTimeout(() => setPeek(null), 2700);
+  }, []);
+
 
   // Refs for use inside foliate's event listeners (registered once per book)
   const locRef = useRef<Loc | null>(null);
@@ -325,6 +376,7 @@ function Reader() {
           if (last !== null && fraction !== last && Math.abs(fraction - last) < 0.02 && sinceLastHaptic() > 500) {
             haptic("tick");
           }
+          if (last !== null && fraction !== last && Math.abs(fraction - last) < 0.02) pageTurns.current++;
           lastFractionRef.current = fraction;
           scheduleSave();
           if (partnerHereRef.current) sendPosition({ bookId: id, ...l });
@@ -479,8 +531,15 @@ function Reader() {
         { event: "INSERT", schema: "public", table: "annotations", filter: `book_id=eq.${id}` },
         ({ new: a }) => {
           setAnns((all) => [...all.filter((x) => x.id !== a.id), a as Annotation]);
-          if (a.reader_id === partner.id &&
-            a.fraction <= Math.max(maxRef.current, locRef.current?.fraction ?? 0) + SPOILER_SLACK) {
+          if (a.reader_id === partner.id && onPage(a.cfi, locRef.current?.cfi)) {
+            // On the page you're reading: their bot peeks in instead of a message
+            markSeen([a.id]);
+            showPeek({ color: partner.color, mood: a.note ? "love" : "happy", side: "right", label: partner.name });
+            haptic("bump");
+          } else if (
+            a.reader_id === partner.id &&
+            a.fraction <= Math.max(maxRef.current, locRef.current?.fraction ?? 0) + SPOILER_SLACK
+          ) {
             toast(`${partner.name} ${a.note ? "left a note" : "highlighted something"} ${a.emoji ?? "💛"}`);
             haptic("bump");
           }
@@ -511,7 +570,7 @@ function Reader() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [id, me, partner, toast]);
+  }, [id, me, partner, toast, showPeek]);
 
   // Partner notes show up to whichever is further: what you've read, or the page you're on now.
   const seenUpTo = Math.max(maxFraction, loc?.fraction ?? 0);
@@ -571,6 +630,36 @@ function Reader() {
       return [];
     }
   }, [pageCfi, bookmarks]);
+
+  // Reaching a note they left: your bot gets heart eyes (once per note)
+  useEffect(() => {
+    if (status !== "ready" || !pageCfi || !partner || !me || showTip) return;
+    const fresh = visible.filter(
+      (a) => a.reader_id === partner.id && (a.note || a.emoji) && !seen().has(a.id) && onPage(a.cfi, pageCfi),
+    );
+    if (!fresh.length) return;
+    markSeen(fresh.map((a) => a.id));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a reaction to arriving on a page
+    showPeek({ color: me.color, mood: "love", side: "left", label: me.name });
+  }, [pageCfi, visible, status, partner, me, showTip, showPeek]);
+
+  // Late at night, after a few pages: offer a goodnight bookmark (once a night)
+  useEffect(() => {
+    if (status !== "ready" || showTip || goodnight || pageTurns.current < 2 || !isNight()) return;
+    if (localStorage.getItem(nightKey())) return;
+    localStorage.setItem(nightKey(), "1");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shown in response to reading, once a night
+    setGoodnight(true);
+  }, [pageCfi, status, showTip, goodnight]);
+
+  async function sayGoodnight() {
+    haptic("success");
+    setGoodnight(false);
+    if (!pageBookmarks.length) await toggleBookmark();
+    nudge(id, "night");
+    await saveNow();
+    toast("Sweet dreams 🌙");
+  }
 
   async function toggleBookmark() {
     haptic("tap");
@@ -793,6 +882,27 @@ function Reader() {
         </>
       )}
 
+      {peek && <PeekBot peek={peek} />}
+
+      {/* Late at night: goodnight bookmark */}
+      {status === "ready" && goodnight && !chrome && !selection && (
+        <div
+          className={`sheet-in absolute inset-x-3 z-30 mx-auto flex max-w-md items-center gap-3 rounded-[28px] p-3 ${g}`}
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)", color: theme.fg }}
+          role="dialog"
+          aria-label="Goodnight bookmark"
+        >
+          <BotHead color={me.color} size={52} mood="sleepy" />
+          <p className="min-w-0 flex-1 font-medium">Goodnight bookmark?</p>
+          <button onClick={() => setGoodnight(false)} className="rounded-full px-3 py-2.5 text-sm opacity-70">
+            Not yet
+          </button>
+          <button onClick={sayGoodnight} className="rounded-full bg-lemon px-4 py-2.5 text-sm font-semibold text-ink">
+            Goodnight 🌙
+          </button>
+        </div>
+      )}
+
       {/* Back to where you were */}
       {status === "ready" && returnTo && !chrome && !selection && (
         <button
@@ -908,9 +1018,15 @@ function Reader() {
             onReply={(r) => setReplies((all) => [...all.filter((x) => x.id !== r.id), r])}
             onUpdated={(a) => setAnns((all) => all.map((x) => (x.id === a.id ? a : x)))}
             onError={toast}
+            onCard={(a) => {
+              setOpenCfi(null);
+              setCardFor(a);
+            }}
           />
         )}
       </Sheet>
+
+      <QuoteCard annotation={cardFor} book={book} me={me} partner={partner} onClose={() => setCardFor(null)} />
 
       <Sheet open={panel === "notes"} onClose={() => setPanel(null)} title="Notes" tone={prefs.theme === "night" ? "dark" : "light"}>
         {visible.length === 0 && (
@@ -1277,6 +1393,7 @@ function AnnotationThread({
   onReply,
   onUpdated,
   onError,
+  onCard,
 }: {
   list: Annotation[];
   replies: Reply[];
@@ -1287,6 +1404,7 @@ function AnnotationThread({
   onReply: (r: Reply) => void;
   onUpdated: (a: Annotation) => void;
   onError: (message: string) => void;
+  onCard: (a: Annotation) => void;
 }) {
   const [text, setText] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
@@ -1298,6 +1416,13 @@ function AnnotationThread({
       <p className="border-l-4 pl-3 font-serif text-[16px] italic leading-relaxed" style={{ borderColor: colorOf(first.reader_id) }}>
         “{first.quote}”
       </p>
+      <button
+        onClick={() => onCard(first)}
+        className="mt-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium"
+        style={{ background: "rgba(127,127,127,.12)" }}
+      >
+        <ImageIcon className="size-3.5" /> Quote card
+      </button>
 
       <div className="mt-4 space-y-3">
         {list.map((a) => (

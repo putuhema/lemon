@@ -120,3 +120,42 @@ textarea {
     animation: none;
   }
 }
+
+/* Bots peeking in from the page edge */
+@keyframes peek-right {
+  0% {
+    transform: translateX(110%) rotate(-14deg);
+  }
+  16%,
+  78% {
+    transform: translateX(28%) rotate(-14deg);
+  }
+  100% {
+    transform: translateX(110%) rotate(-14deg);
+  }
+}
+@keyframes peek-left {
+  0% {
+    transform: translateX(-110%) rotate(14deg);
+  }
+  16%,
+  78% {
+    transform: translateX(-28%) rotate(14deg);
+  }
+  100% {
+    transform: translateX(-110%) rotate(14deg);
+  }
+}
+.peek-right {
+  animation: peek-right 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.peek-left {
+  animation: peek-left 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .peek-right,
+  .peek-left {
+    animation: fade-in 200ms ease-out both;
+    transform: translateX(0);
+  }
+}
