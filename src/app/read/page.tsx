@@ -14,7 +14,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { useLemon } from "@/lib/lemon";
 import { supabase } from "@/lib/supabase";
-import { loadBookFile } from "@/lib/bookCache";
+import { cachedBookFile, loadBookFile } from "@/lib/bookCache";
 import { computeStreak, logPages, PAGES_PER_DAY } from "@/lib/streak";
 import { saveProgress, isOffline, useOffline } from "@/lib/offline";
 import { haptic, sinceLastHaptic } from "@/lib/haptics";
@@ -364,6 +364,14 @@ function Reader() {
     let cancelled = false;
     let view: any = null;
 
+    // Start the slow parts right away; they don't need the book's details
+    const cachedFile = cachedBookFile(id);
+    const engine = Promise.all([
+      import("foliate-js/view.js"),
+      import("foliate-js/overlayer.js"),
+    ]);
+    engine.catch(() => {}); // a failure is reported when it's awaited below
+
     (async () => {
       try {
         const [b, progs, a] = await Promise.all([
@@ -400,27 +408,31 @@ function Reader() {
             ({ data }) =>
               !cancelled && setBookmarks((data ?? []) as Bookmark[]),
           );
+        // Replies are only needed once a note is opened, so the book doesn't wait for them
         if (annList.length) {
-          const r = await supabase
+          supabase
             .from("replies")
             .select("*")
             .in(
               "annotation_id",
               annList.map((x) => x.id),
             )
-            .order("created_at");
-          if (!cancelled) setReplies((r.data ?? []) as Reply[]);
+            .order("created_at")
+            .then(
+              ({ data }) => !cancelled && setReplies((data ?? []) as Reply[]),
+            );
         }
 
-        const file = await loadBookFile(id, b.data.file_path).catch((e) => {
-          throw isOffline()
-            ? new Error(
-                "This book isn’t on your phone yet. Open it once with internet.",
-              )
-            : e;
-        });
-        await import("foliate-js/view.js");
-        const { Overlayer } = await import("foliate-js/overlayer.js");
+        const file = await loadBookFile(id, b.data.file_path, cachedFile).catch(
+          (e) => {
+            throw isOffline()
+              ? new Error(
+                  "This book isn’t on your phone yet. Open it once with internet.",
+                )
+              : e;
+          },
+        );
+        const [, { Overlayer }] = await engine;
         if (cancelled || !hostRef.current) return;
 
         view = document.createElement("foliate-view");
@@ -755,15 +767,24 @@ function Reader() {
     [anns, seenUpTo, me?.id],
   );
   const lockedCount = anns.length - visible.length;
+  // `visible` is a new list on every page turn (your read-up-to mark moves),
+  // so redraw highlights only when the notes in it actually change.
+  const visibleKey = useMemo(
+    () => visible.map((a) => `${a.id}:${a.cfi}`).join(","),
+    [visible],
+  );
 
   useEffect(() => {
     const map = new Map<string, Annotation[]>();
     for (const a of visible) map.set(a.cfi, [...(map.get(a.cfi) ?? []), a]);
     byCfiRef.current = map;
     visibleRef.current = visible;
+  }, [visible]);
+
+  useEffect(() => {
     const view = viewRef.current;
     if (status !== "ready" || !view) return;
-    const want = new Set(map.keys());
+    const want = new Set(byCfiRef.current.keys());
     for (const cfi of drawnRef.current)
       if (!want.has(cfi))
         view.deleteAnnotation({ value: cfi }).catch?.(() => {});
@@ -771,7 +792,7 @@ function Reader() {
     for (const cfi of want)
       view.addAnnotation({ value: cfi }).catch?.(() => {});
     drawnRef.current = want;
-  }, [visible, status]);
+  }, [visibleKey, status]);
 
   // ---- Actions ---------------------------------------------------------------
   async function createAnnotation({

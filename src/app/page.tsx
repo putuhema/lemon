@@ -87,6 +87,21 @@ function Library() {
     };
   }, [me, load]);
 
+  // Warm up the reader engine while you look at the shelf, so tapping a book opens it sooner
+  useEffect(() => {
+    if (!me) return;
+    const warm = () => {
+      import("foliate-js/view.js").catch(() => {});
+      import("foliate-js/overlayer.js").catch(() => {});
+    };
+    if ("requestIdleCallback" in window) {
+      const handle = requestIdleCallback(warm, { timeout: 3000 });
+      return () => cancelIdleCallback(handle);
+    }
+    const t = setTimeout(warm, 1500);
+    return () => clearTimeout(t);
+  }, [me]);
+
   // Keep the books you're reading saved on the phone, so they open without internet
   useEffect(() => {
     if (!me || !books || offline) return;

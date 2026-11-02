@@ -3,18 +3,26 @@ import { supabase, BUCKET } from "./supabase";
 const CACHE = "lemon-books-v1";
 const key = (bookId: string) => `/__lemon_book/${bookId}`;
 
-/** Load an ebook file, from the phone's cache when possible so it opens fast and offline. */
-export async function loadBookFile(bookId: string, path: string): Promise<File> {
-  const name = path.split("/").pop() ?? "book.epub";
-  if ("caches" in window) {
-    try {
-      const cache = await caches.open(CACHE);
-      const hit = await cache.match(key(bookId));
-      if (hit) return new File([await hit.blob()], name);
-    } catch {
-      /* cache unavailable, fall through to download */
-    }
+/** The book saved on this phone, or null. Needs only the id, so it can start before the book's details arrive. */
+export async function cachedBookFile(bookId: string): Promise<Blob | null> {
+  if (!("caches" in window)) return null;
+  try {
+    const hit = await (await caches.open(CACHE)).match(key(bookId));
+    return hit ? await hit.blob() : null;
+  } catch {
+    return null; // cache unavailable
   }
+}
+
+/** Load an ebook file, from the phone's cache when possible so it opens fast and offline. */
+export async function loadBookFile(
+  bookId: string,
+  path: string,
+  cached: Promise<Blob | null> = cachedBookFile(bookId),
+): Promise<File> {
+  const name = path.split("/").pop() ?? "book.epub";
+  const hit = await cached;
+  if (hit) return new File([hit], name);
   const { data, error } = await supabase.storage.from(BUCKET).download(path);
   if (error || !data) throw error ?? new Error("Could not download the book");
   if ("caches" in window) {
