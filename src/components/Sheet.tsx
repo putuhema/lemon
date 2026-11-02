@@ -35,8 +35,8 @@ export function Sheet({
         role="dialog"
         className={`sheet-in relative max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-[28px] px-5 pt-3 pb-4 backdrop-blur-xl backdrop-saturate-150 ${
           dark
-            ? "border border-white/10 bg-[#26231c]/90 text-[#eee6d3] shadow-[0_10px_40px_rgb(0_0_0/0.5),inset_0_1px_0_rgb(255_255_255/0.07)]"
-            : "border border-white/80 bg-paper/90 text-ink shadow-[0_10px_40px_rgb(0_0_0/0.14),inset_0_1px_0_rgb(255_255_255/0.9)]"
+            ? "border border-white/10 bg-[#26231c]/90 text-[#eee6d3]"
+            : "border border-ink/10 bg-paper/90 text-ink"
         }`}
       >
         <div className={`mx-auto mb-3 h-1.5 w-10 rounded-full ${dark ? "bg-white/20" : "bg-ink/15"}`} />

@@ -3,6 +3,7 @@
 import type { Reader } from "@/lib/types";
 import type { Streak } from "@/lib/streak";
 import { LemonTree } from "./LemonTree";
+import { BotHead, type BotMood } from "./BotHead";
 
 const WEEKDAY = (day: string) =>
   new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: "narrow" });
@@ -10,21 +11,25 @@ const WEEKDAY = (day: string) =>
 /** The couple's reading streak, drawn as a lemon tree that grows while you both keep reading. */
 export function StreakCard({ streak, me, partner }: { streak: Streak; me: Reader; partner: Reader }) {
   const { current, best, meToday, partnerToday, week } = streak;
+  const broken = current === 0 && best > 0;
+  // Each face shows today: happy when you both read, waiting on the other, sleepy when the streak broke.
+  const moodFor = (self: boolean, other: boolean): BotMood =>
+    self ? (other ? "happy" : "waiting") : broken ? "sleepy" : "idle";
 
   return (
-    <section className="flex items-center gap-2 rounded-3xl bg-paper p-3 pr-4 shadow-sm ring-1 ring-ink/5">
+    <section className="flex items-center gap-2 rounded-3xl bg-paper p-3 pr-4 ring-1 ring-ink/5">
       <div className="-my-2 shrink-0">
         <LemonTree streak={current} size={96} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           <p className="font-serif text-3xl leading-none font-semibold tabular-nums">
             {current}
             <span className="ml-1 font-sans text-sm font-medium text-muted">{current === 1 ? "day" : "days"}</span>
           </p>
-          <div className="flex gap-1.5 text-xs">
-            <Today reader={me} done={meToday} label="You" />
-            <Today reader={partner} done={partnerToday} label={partner.name} />
+          <div className="flex items-end gap-2">
+            <Today reader={me} mood={moodFor(meToday, partnerToday)} done={meToday} />
+            <Today reader={partner} mood={moodFor(partnerToday, meToday)} done={partnerToday} />
           </div>
         </div>
 
@@ -55,13 +60,15 @@ export function StreakCard({ streak, me, partner }: { streak: Streak; me: Reader
   );
 }
 
-function Today({ reader, done, label }: { reader: Reader; done: boolean; label: string }) {
+function Today({ reader, mood, done }: { reader: Reader; mood: BotMood; done: boolean }) {
   return (
-    <span
-      className={`rounded-full px-2 py-0.5 ${done ? "text-ink" : "text-muted"}`}
-      style={{ background: done ? reader.color + "55" : "rgba(46,42,31,.05)" }}
-    >
-      {done ? "✓" : "○"} {label}
+    <span className="relative">
+      <BotHead color={reader.color} size={40} mood={mood} bob={mood === "happy"} label={reader.name} />
+      {done && (
+        <span className="absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-full bg-leaf text-[10px] font-bold text-white">
+          ✓
+        </span>
+      )}
     </span>
   );
 }

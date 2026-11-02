@@ -49,7 +49,7 @@ function NavItem({ item, active }: { item: Item; active: boolean }) {
       {active && (
         <motion.span
           layoutId="nav-active"
-          className="absolute inset-0 rounded-full bg-ink/[0.07] shadow-[inset_0_1px_0_rgb(255_255_255/0.6)]"
+          className="absolute inset-0 rounded-full bg-ink/[0.07]"
         />
       )}
       {busy ? (

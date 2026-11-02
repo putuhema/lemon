@@ -21,7 +21,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-6 pt-safe pb-safe">
       <div className="w-full max-w-sm">
-        <img src="/icons/icon-192.png" alt="" className="mx-auto mb-6 size-24 rounded-[28px] shadow-md" />
+        <img src="/icons/icon-192.png" alt="" className="mx-auto mb-6 size-24 rounded-[28px]" />
         <h1 className="text-center font-serif text-4xl font-semibold tracking-tight">Lemon</h1>
         <p className="mt-2 text-center text-muted">Reading together, from far away.</p>
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
           {error && <p className="text-sm text-red-700">{error}</p>}
           <button
             disabled={busy}
-            className="w-full rounded-2xl bg-lemon py-3.5 font-semibold text-ink shadow-sm transition active:scale-[0.98] disabled:opacity-60"
+            className="w-full rounded-2xl bg-lemon py-3.5 font-semibold text-ink transition active:scale-[0.98] disabled:opacity-60"
           >
             {busy ? "Opening…" : "Open Lemon"}
           </button>

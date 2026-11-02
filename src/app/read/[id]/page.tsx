@@ -13,6 +13,7 @@ import { bookCSS, DEFAULT_PREFS, THEMES, type Prefs } from "@/lib/readerStyle";
 import type { Annotation, Book, Progress, Reply } from "@/lib/types";
 import { pct, timeAgo } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
+import { BotHead } from "@/components/BotHead";
 import { Sheet } from "@/components/Sheet";
 import { readerGlass, readerGlassDark } from "@/lib/glass";
 import {
@@ -557,7 +558,7 @@ function Reader() {
           style={{ top: "calc(env(safe-area-inset-top) + 10px)", color: theme.fg }}
         >
           <span className="live-pulse rounded-full">
-            <Avatar reader={partner} size={26} />
+            <Avatar reader={partner} size={26} mood="reading" />
           </span>
           {following ? `Following ${partner.name}` : partnerFollowingMe ? `${partner.name} is following you` : `${partner.name} is here`}
         </button>
@@ -588,7 +589,7 @@ function Reader() {
               {partnerHere ? (
                 <button
                   onClick={() => setPanel("live")}
-                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink shadow-[0_6px_18px_rgb(224_173_0/0.35)]"
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink"
                 >
                   <span className="size-2 rounded-full bg-leaf" /> Live
                 </button>
@@ -597,7 +598,7 @@ function Reader() {
                   onClick={async () => {
                     toast(await nudge(id, "read"));
                   }}
-                  className="h-9 shrink-0 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink shadow-[0_6px_18px_rgb(224_173_0/0.35)]"
+                  className="h-9 shrink-0 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink"
                 >
                   Read with me?
                 </button>
@@ -670,7 +671,7 @@ function Reader() {
             </button>
             <button
               onClick={() => setComposer(true)}
-              className="flex h-11 items-center justify-center gap-1.5 rounded-full bg-lemon text-ink shadow-[0_6px_18px_rgb(224_173_0/0.35)]"
+              className="flex h-11 items-center justify-center gap-1.5 rounded-full bg-lemon text-ink"
             >
               <PenLineIcon className="size-4" /> Note
             </button>
@@ -732,7 +733,7 @@ function Reader() {
               style={{ background: "rgba(127,127,127,.08)" }}
             >
               <div className="flex items-center gap-2 text-xs opacity-70">
-                <span className="size-2.5 rounded-full" style={{ background: colorOf(a.reader_id) }} />
+                <BotHead color={colorOf(a.reader_id)} size={18} />
                 {nameOf(a.reader_id)} · {a.chapter ?? pct(a.fraction)}
                 {a.emoji && <span className="ml-auto text-base">{a.emoji}</span>}
               </div>
@@ -909,11 +910,11 @@ function ProgressTrack({
         {partner && (
           <button
             onClick={onPartner}
-            className="absolute top-1/2 z-10 -translate-x-1/2 -translate-y-[calc(50%+14px)] rounded-full px-1.5 py-0.5 text-[10px] font-bold text-ink shadow"
-            style={{ left: pct(partner.fraction), background: partner.color }}
+            className="absolute top-1/2 z-10 -translate-x-1/2 -translate-y-[calc(50%+16px)]"
+            style={{ left: pct(partner.fraction) }}
             aria-label={`Jump to ${partner.name}`}
           >
-            {partner.name[0]}
+            <BotHead color={partner.color} size={24} mood="reading" />
           </button>
         )}
         <input
@@ -935,7 +936,7 @@ function ProgressTrack({
           aria-label="Position in book"
         />
         <div
-          className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow"
+          className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white"
           style={{ left: pct(value), background: me.color }}
         />
       </div>
@@ -1059,7 +1060,7 @@ function AnnotationThread({
       <div className="mt-4 space-y-3">
         {list.map((a) => (
           <div key={a.id} className="flex gap-2.5">
-            <span className="mt-0.5 size-6 shrink-0 rounded-full" style={{ background: colorOf(a.reader_id) }} />
+            <BotHead color={colorOf(a.reader_id)} size={28} mood={a.reader_id === meId ? "idle" : "love"} />
             <div className="min-w-0 flex-1">
               <p className="text-xs opacity-60">
                 {nameOf(a.reader_id)} · {timeAgo(a.created_at)} {a.emoji}
@@ -1117,7 +1118,7 @@ function AnnotationThread({
 
         {replies.map((r) => (
           <div key={r.id} className="ml-8 flex gap-2.5">
-            <span className="mt-0.5 size-5 shrink-0 rounded-full" style={{ background: colorOf(r.reader_id) }} />
+            <BotHead color={colorOf(r.reader_id)} size={22} />
             <div>
               <p className="text-xs opacity-60">
                 {nameOf(r.reader_id)} · {timeAgo(r.created_at)}

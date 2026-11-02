@@ -1,14 +1,7 @@
 import type { Reader } from "@/lib/types";
-import { initial } from "@/lib/format";
+import { BotHead, type BotMood } from "./BotHead";
 
-export function Avatar({ reader, size = 32, ring }: { reader: Reader; size?: number; ring?: boolean }) {
-  return (
-    <span
-      className={`grid shrink-0 place-items-center rounded-full font-semibold text-ink/85 ${ring ? "ring-2 ring-white" : ""}`}
-      style={{ width: size, height: size, background: reader.color, fontSize: size * 0.42 }}
-      aria-label={reader.name}
-    >
-      {initial(reader.name)}
-    </span>
-  );
+/** A reader's companion bot. */
+export function Avatar({ reader, size = 32, mood, bob }: { reader: Reader; size?: number; mood?: BotMood; bob?: boolean }) {
+  return <BotHead color={reader.color} size={size} mood={mood} bob={bob} label={reader.name} />;
 }

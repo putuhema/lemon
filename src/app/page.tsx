@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { useLemon, NUDGES, type NudgeKind } from "@/lib/lemon";
+import { useLemon } from "@/lib/lemon";
 import { supabase, BUCKET } from "@/lib/supabase";
 import type { Book, Progress } from "@/lib/types";
 import { uploadBook, deleteBook, takeSharedFile } from "@/lib/upload";
 import { forgetBookFile } from "@/lib/bookCache";
-import { pct, initial } from "@/lib/format";
+import { pct } from "@/lib/format";
+import { BotHead } from "@/components/BotHead";
 import { enablePush, hasPushSubscription, isIOS, isStandalone, pushSupported } from "@/lib/push";
 import { Avatar } from "@/components/Avatar";
 import { Sheet } from "@/components/Sheet";
@@ -26,7 +27,7 @@ export default function Page() {
 }
 
 function Library() {
-  const { ready, me, partner, notMember, partnerActivity, toast, nudge } = useLemon();
+  const { ready, me, partner, notMember, toast, nudge } = useLemon();
   const router = useRouter();
   const params = useSearchParams();
   const [books, setBooks] = useState<Book[] | null>(null);
@@ -35,7 +36,6 @@ function Library() {
   const [uploading, setUploading] = useState<string | null>(null);
   const [menuBook, setMenuBook] = useState<Book | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [nudgeOpen, setNudgeOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const streak = useStreak(me?.id, partner?.id);
 
@@ -106,11 +106,6 @@ function Library() {
 
   const prog = (bookId: string, readerId?: string) =>
     progress.find((p) => p.book_id === bookId && p.reader_id === readerId);
-  const partnerBook = books?.find((b) => b.id === partnerActivity?.bookId);
-  const lastPartner = progress
-    .filter((p) => p.reader_id === partner?.id)
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
-  const lastPartnerBook = books?.find((b) => b.id === lastPartner?.book_id);
   const myLastBook = progress
     .filter((p) => p.reader_id === me.id && books?.some((b) => b.id === p.book_id))
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]?.book_id;
@@ -120,24 +115,6 @@ function Library() {
       <TopBar>
         <img src="/icons/icon-192.png" alt="" className="size-7 rounded-lg" />
         <h1 className="mr-auto font-serif text-lg font-semibold tracking-tight">Lemon</h1>
-        {partner &&
-          (partnerActivity && partnerBook ? (
-            <Link
-              href={`/read/${partnerBook.id}?join=1`}
-              className="flex h-9 items-center gap-2 rounded-full bg-lemon px-3 text-sm font-semibold shadow-[0_6px_18px_rgb(224_173_0/0.35)]"
-            >
-              <span className="size-2 rounded-full bg-leaf" />
-              Join {partner.name}
-            </Link>
-          ) : (
-            <button
-              onClick={() => setNudgeOpen(true)}
-              className="flex h-9 items-center gap-2 rounded-full border border-ink/10 px-3 text-sm"
-            >
-              <span className={`size-2 rounded-full ${partnerActivity ? "bg-leaf" : "bg-ink/25"}`} />
-              {partner.name}
-            </button>
-          ))}
         <button onClick={() => setSettingsOpen(true)} aria-label="Settings" className="rounded-full">
           <Avatar reader={me} size={36} />
         </button>
@@ -188,8 +165,8 @@ function Library() {
                   <p className="mt-2 text-xs font-medium text-leaf">Finished together 🎉</p>
                 ) : (
                   <div className="mt-2 space-y-1">
-                    <Bar color={me.color} label={initial(me.name)} value={mine?.fraction} />
-                    {partner && <Bar color={partner.color} label={initial(partner.name)} value={theirs?.fraction} />}
+                    <Bar color={me.color} label={me.name} value={mine?.fraction} />
+                    {partner && <Bar color={partner.color} label={partner.name} value={theirs?.fraction} />}
                   </div>
                 )}
               </div>
@@ -258,23 +235,6 @@ function Library() {
         )}
       </Sheet>
 
-      <Sheet open={nudgeOpen} onClose={() => setNudgeOpen(false)} title={`Nudge ${partner?.name ?? ""}`}>
-        <div className="space-y-2">
-          {(Object.keys(NUDGES) as NudgeKind[]).map((k) => (
-            <button
-              key={k}
-              className="w-full rounded-2xl bg-ink/5 px-4 py-3.5 text-left font-medium active:bg-ink/10"
-              onClick={async () => {
-                setNudgeOpen(false);
-                toast(await nudge(lastPartnerBook?.id ?? null, k));
-              }}
-            >
-              {NUDGES[k].label}
-            </button>
-          ))}
-        </div>
-      </Sheet>
-
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </main>
   );
@@ -283,12 +243,7 @@ function Library() {
 function Bar({ color, label, value }: { color: string; label: string; value?: number }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span
-        className="grid size-4 shrink-0 place-items-center rounded-full text-[9px] font-bold text-ink/80"
-        style={{ background: color }}
-      >
-        {label}
-      </span>
+      <BotHead color={color} size={20} label={label} />
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink/8">
         <div className="h-full rounded-full" style={{ width: pct(value), background: color }} />
       </div>
@@ -303,11 +258,11 @@ function Cover({ book, url }: { book: Book; url?: string }) {
       <img
         src={url}
         alt=""
-        className="aspect-[2/3] w-full rounded-xl object-cover shadow-md ring-1 ring-ink/5"
+        className="aspect-[2/3] w-full rounded-xl object-cover ring-1 ring-ink/5"
       />
     );
   return (
-    <div className="flex aspect-[2/3] w-full flex-col justify-between rounded-xl bg-gradient-to-br from-lemon to-lemon-deep p-3 shadow-md">
+    <div className="flex aspect-[2/3] w-full flex-col justify-between rounded-xl bg-gradient-to-br from-lemon to-lemon-deep p-3">
       <p className="font-serif text-base font-semibold leading-tight text-ink">{book.title}</p>
       <p className="text-xs text-ink/70">{book.author}</p>
     </div>

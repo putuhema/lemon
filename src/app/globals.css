@@ -71,10 +71,10 @@ textarea {
 
 @keyframes pulse-ring {
   0% {
-    box-shadow: 0 0 0 0 rgb(245 203 46 / 0.7);
+    outline: 0 solid rgb(245 203 46 / 0.7);
   }
   100% {
-    box-shadow: 0 0 0 10px rgb(245 203 46 / 0);
+    outline: 10px solid rgb(245 203 46 / 0);
   }
 }
 .live-pulse {
@@ -86,6 +86,37 @@ textarea {
   .sheet-in,
   .fade-in,
   .live-pulse {
+    animation: none;
+  }
+}
+
+/* Companion bots */
+@keyframes bot-bob {
+  50% {
+    transform: translateY(-2px);
+  }
+}
+.bot-bob {
+  animation: bot-bob 2.4s ease-in-out infinite;
+}
+@keyframes bot-blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.1);
+  }
+}
+.bot-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bot-blink 4.5s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bot-bob,
+  .bot-blink {
     animation: none;
   }
 }
