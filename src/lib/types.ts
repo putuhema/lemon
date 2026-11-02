@@ -54,3 +54,14 @@ export type LivePosition = {
   fraction: number;
   chapter: string | null;
 };
+
+export type Bookmark = {
+  id: string;
+  book_id: string;
+  reader_id: string;
+  cfi: string;
+  fraction: number;
+  chapter: string | null;
+  excerpt: string | null;
+  created_at: string;
+};

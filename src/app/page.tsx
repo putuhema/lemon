@@ -15,6 +15,7 @@ import { enablePush, hasPushSubscription, isIOS, isStandalone, pushSupported } f
 import { Avatar } from "@/components/Avatar";
 import { Sheet } from "@/components/Sheet";
 import { StreakCard } from "@/components/StreakCard";
+import { ContinueCard } from "@/components/ContinueCard";
 import { useStreak } from "@/lib/streak";
 import { BookOpenTextIcon, FloatingNav, LibraryBigIcon, PlusIcon, TopBar } from "@/components/Floating";
 
@@ -107,8 +108,10 @@ function Library() {
   const prog = (bookId: string, readerId?: string) =>
     progress.find((p) => p.book_id === bookId && p.reader_id === readerId);
   const myLastBook = progress
-    .filter((p) => p.reader_id === me.id && books?.some((b) => b.id === p.book_id))
+    .filter((p) => p.reader_id === me.id && !p.finished_at && books?.some((b) => b.id === p.book_id))
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]?.book_id;
+  const continueBook = books?.find((b) => b.id === myLastBook);
+  const continueProg = continueBook ? prog(continueBook.id, me.id) : undefined;
 
   return (
     <main className="mx-auto min-h-dvh max-w-2xl px-5 pt-[calc(env(safe-area-inset-top)+76px)] pb-[calc(env(safe-area-inset-bottom)+104px)]">
@@ -120,8 +123,21 @@ function Library() {
         </button>
       </TopBar>
 
+      {continueBook && continueProg && (
+        <ContinueCard
+          book={continueBook}
+          cover={continueBook.cover_path ? covers[continueBook.cover_path] : undefined}
+          mine={continueProg}
+          theirs={prog(continueBook.id, partner?.id)}
+          me={me}
+          partner={partner}
+        />
+      )}
+
       {streak && partner && (
-        <StreakCard streak={streak} me={me} partner={partner} />
+        <div className={continueBook ? "mt-3" : ""}>
+          <StreakCard streak={streak} me={me} partner={partner} />
+        </div>
       )}
 
       <div className="mt-8 flex items-baseline justify-between">
@@ -162,7 +178,9 @@ function Library() {
                   </button>
                 </div>
                 {bothDone ? (
-                  <p className="mt-2 text-xs font-medium text-leaf">Finished together 🎉</p>
+                  <Link href={`/book/${b.id}`} className="mt-2 block text-xs font-medium text-leaf">
+                    Finished together 🎉
+                  </Link>
                 ) : (
                   <div className="mt-2 space-y-1">
                     <Bar color={me.color} label={me.name} value={mine?.fraction} />
@@ -204,6 +222,12 @@ function Library() {
       <Sheet open={!!menuBook} onClose={() => setMenuBook(null)} title={menuBook?.title}>
         {menuBook && (
           <div className="space-y-2">
+            <Link
+              href={`/book/${menuBook.id}`}
+              className="block w-full rounded-2xl bg-ink/5 px-4 py-3.5 text-left font-medium"
+            >
+              Our book
+            </Link>
             <button
               className="w-full rounded-2xl bg-ink/5 px-4 py-3.5 text-left font-medium"
               onClick={async () => {

@@ -10,7 +10,8 @@ import { supabase } from "@/lib/supabase";
 import { loadBookFile } from "@/lib/bookCache";
 import { computeStreak, logPages, PAGES_PER_DAY } from "@/lib/streak";
 import { bookCSS, DEFAULT_PREFS, THEMES, type Prefs } from "@/lib/readerStyle";
-import type { Annotation, Book, Progress, Reply } from "@/lib/types";
+import type { Annotation, Book, Bookmark, Progress, Reply } from "@/lib/types";
+import { collapse, compare } from "foliate-js/epubcfi.js";
 import { pct, timeAgo } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
 import { BotHead } from "@/components/BotHead";
@@ -18,6 +19,8 @@ import { Sheet } from "@/components/Sheet";
 import { readerGlass, readerGlassDark } from "@/lib/glass";
 import {
   ALargeSmallIcon,
+  BookmarkIcon,
+  XIcon,
   ChevronLeftIcon,
   CopyIcon,
   HighlighterIcon,
@@ -63,6 +66,30 @@ function usePrefs() {
   return [prefs, update] as const;
 }
 
+const CHAPTER_ONE = /\b(chapter|bab|prologue|prolog|part (one|1|i)\b|book (one|1|i)\b)/i;
+const FRONT_MATTER =
+  /^(cover|title|half.?title|contents|table of contents|copyright|license|licence|dedication|epigraph|preface|foreword|introduction|acknowledg|list of|illustrations|about|also by|praise|daftar isi|kata pengantar|halaman)/i;
+
+/** Where the story starts: the first "Chapter…" entry, or the first entry that isn't front matter. */
+function findStoryStart(toc: TocItem[], bookTitle = ""): string | undefined {
+  const flat: TocItem[] = [];
+  const walk = (items: TocItem[]) =>
+    items.forEach((it) => {
+      flat.push(it);
+      if (it.subitems?.length) walk(it.subitems);
+    });
+  walk(toc);
+  const chapter = flat.find((it) => CHAPTER_ONE.test(it.label ?? ""));
+  if (chapter?.href) return chapter.href;
+  // Otherwise the first entry that isn't front matter or the book's own title page
+  const squash = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const title = squash(bookTitle);
+  return flat.find((it) => {
+    const label = (it.label ?? "").trim();
+    return it.href && !FRONT_MATTER.test(label) && !(title && squash(label) === title);
+  })?.href;
+}
+
 function rangeFraction(view: any, index: number, range: Range) {
   const fr: number[] = view.getSectionFractions();
   const start = fr[index] ?? 0;
@@ -100,6 +127,8 @@ function Reader() {
   const [panel, setPanel] = useState<null | "notes" | "type" | "toc" | "live">(null);
   const [following, setFollowing] = useState(false);
   const [toc, setToc] = useState<TocItem[]>([]);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [tocTab, setTocTab] = useState<"chapters" | "bookmarks">("chapters");
 
   // Refs for use inside foliate's event listeners (registered once per book)
   const locRef = useRef<Loc | null>(null);
@@ -169,7 +198,10 @@ function Reader() {
     const l = locRef.current;
     const meNow = meRef.current;
     if (!l || !meNow) return;
-    if (!finishedRef.current && l.fraction >= 0.99) finishedRef.current = new Date().toISOString();
+    if (!finishedRef.current && l.fraction >= 0.99) {
+      finishedRef.current = new Date().toISOString();
+      toastRef.current("You finished 🎉", { label: "Our book", href: `/book/${id}` });
+    }
     const turned = pagesRef.current;
     pagesRef.current = 0;
     if (turned > 0) logPages(turned).then((total) => onPagesLogged(total, turned));
@@ -226,6 +258,13 @@ function Reader() {
         setMaxFraction(maxRef.current);
         const annList = (a.data ?? []) as Annotation[];
         setAnns(annList);
+        supabase
+          .from("bookmarks")
+          .select("*")
+          .eq("book_id", id)
+          .eq("reader_id", me.id)
+          .order("fraction")
+          .then(({ data }) => !cancelled && setBookmarks((data ?? []) as Bookmark[]));
         if (annList.length) {
           const r = await supabase
             .from("replies")
@@ -323,7 +362,9 @@ function Reader() {
         });
 
         setToc((view.book.toc ?? []) as TocItem[]);
-        const start = joinOnOpen && theirs?.cfi ? theirs.cfi : mine?.cfi;
+        // First time in this book: skip the cover, license and contents, start at chapter one.
+        const start =
+          (joinOnOpen && theirs?.cfi ? theirs.cfi : mine?.cfi) ?? findStoryStart((view.book.toc ?? []) as TocItem[], b.data.title);
         await view.init({ lastLocation: start, showTextStart: !start });
         if (cancelled) return;
         setStatus("ready");
@@ -484,6 +525,38 @@ function Reader() {
     setAnns((all) => [...all.filter((x) => x.id !== data.id), data as Annotation]);
   }
 
+  // Bookmarks on the page you're looking at
+  const pageCfi = loc?.cfi;
+  const pageBookmarks = useMemo(() => {
+    if (!pageCfi) return [];
+    try {
+      const start = collapse(pageCfi);
+      const end = collapse(pageCfi, true);
+      return bookmarks.filter((b) => compare(b.cfi, start) >= 0 && compare(b.cfi, end) <= 0);
+    } catch {
+      return [];
+    }
+  }, [pageCfi, bookmarks]);
+
+  async function toggleBookmark() {
+    const l = locRef.current;
+    if (!l || !me) return;
+    if (pageBookmarks.length) {
+      const ids = pageBookmarks.map((b) => b.id);
+      setBookmarks((all) => all.filter((b) => !ids.includes(b.id)));
+      await supabase.from("bookmarks").delete().in("id", ids);
+      return;
+    }
+    const excerpt =
+      (viewRef.current?.lastLocation?.range?.toString() ?? "").replace(/\s+/g, " ").trim().slice(0, 140) || null;
+    const { data } = await supabase
+      .from("bookmarks")
+      .insert({ book_id: id, reader_id: me.id, cfi: collapse(l.cfi), fraction: l.fraction, chapter: l.chapter, excerpt })
+      .select()
+      .single();
+    if (data) setBookmarks((all) => [...all, data as Bookmark].sort((a, b) => a.fraction - b.fraction));
+  }
+
   const jumpTo = (cfi: string) => {
     setFollowing(false);
     viewRef.current?.goTo(cfi);
@@ -548,6 +621,20 @@ function Reader() {
         </div>
       )}
 
+      {/* Bookmark ribbon on the page corner */}
+      {status === "ready" && pageBookmarks.length > 0 && (
+        <svg
+          viewBox="0 0 16 28"
+          width="16"
+          height="28"
+          aria-hidden
+          className={`pointer-events-none absolute right-6 z-10 transition-opacity duration-300 ${chrome ? "opacity-0" : ""}`}
+          style={{ top: "env(safe-area-inset-top)" }}
+        >
+          <path d="M0 0 H16 V28 L8 21 L0 28 Z" fill={me.color} />
+        </svg>
+      )}
+
       {/* Live pill: partner is in this book right now */}
       {status === "ready" && partnerHere && (
         <button
@@ -586,6 +673,18 @@ function Reader() {
                   {loc?.chapter}
                 </p>
               </div>
+              <button
+                onClick={toggleBookmark}
+                className="grid size-10 shrink-0 place-items-center rounded-full"
+                aria-label={pageBookmarks.length ? "Remove bookmark" : "Bookmark this page"}
+                aria-pressed={pageBookmarks.length > 0}
+              >
+                <BookmarkIcon
+                  className="size-5"
+                  fill={pageBookmarks.length ? me.color : "none"}
+                  stroke={pageBookmarks.length ? me.color : "currentColor"}
+                />
+              </button>
               {partnerHere ? (
                 <button
                   onClick={() => setPanel("live")}
@@ -754,17 +853,61 @@ function Reader() {
         )}
       </Sheet>
 
-      <Sheet open={panel === "toc"} onClose={() => setPanel(null)} title="Contents" tone={prefs.theme === "night" ? "dark" : "light"}>
-        <TocList
-          items={toc}
-          current={loc?.chapter ?? null}
-          onGo={(href) => {
-            setFollowing(false);
-            viewRef.current?.goTo(href);
-            setPanel(null);
-            setChrome(false);
-          }}
-        />
+      <Sheet open={panel === "toc"} onClose={() => setPanel(null)} tone={prefs.theme === "night" ? "dark" : "light"}>
+        <div className="mb-4 grid grid-cols-2 rounded-full p-1 text-sm font-medium" style={{ background: "rgba(127,127,127,.12)" }}>
+          {(
+            [
+              ["chapters", "Chapters"],
+              ["bookmarks", bookmarks.length ? `Bookmarks · ${bookmarks.length}` : "Bookmarks"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTocTab(key)}
+              className={`rounded-full py-2 transition-colors ${tocTab === key ? "bg-paper text-ink" : "opacity-60"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {tocTab === "chapters" ? (
+          <TocList
+            items={toc}
+            current={loc?.chapter ?? null}
+            onGo={(href) => {
+              setFollowing(false);
+              viewRef.current?.goTo(href);
+              setPanel(null);
+              setChrome(false);
+            }}
+          />
+        ) : bookmarks.length === 0 ? (
+          <p className="py-6 text-center text-sm opacity-60">Tap the bookmark at the top to save a page</p>
+        ) : (
+          <ul className="space-y-2">
+            {bookmarks.map((b) => (
+              <li key={b.id} className="flex items-start gap-1 rounded-2xl p-3" style={{ background: "rgba(127,127,127,.08)" }}>
+                <button className="min-w-0 flex-1 text-left" onClick={() => jumpTo(b.cfi)}>
+                  <p className="flex items-center gap-1.5 text-xs opacity-60">
+                    <BookmarkIcon className="size-3.5" fill={me.color} stroke={me.color} />
+                    {b.chapter ?? pct(b.fraction)} · {pct(b.fraction)}
+                  </p>
+                  {b.excerpt && <p className="mt-1 line-clamp-2 font-serif text-[15px] leading-snug">{b.excerpt}</p>}
+                </button>
+                <button
+                  aria-label="Remove bookmark"
+                  className="grid size-8 shrink-0 place-items-center rounded-full opacity-50"
+                  onClick={async () => {
+                    setBookmarks((all) => all.filter((x) => x.id !== b.id));
+                    await supabase.from("bookmarks").delete().eq("id", b.id);
+                  }}
+                >
+                  <XIcon className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Sheet>
 
       <Sheet open={panel === "type"} onClose={() => setPanel(null)} title="Text" tone={prefs.theme === "night" ? "dark" : "light"}>

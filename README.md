@@ -8,6 +8,9 @@ A private ebook reader for two, made for reading together from far away.
 - **Live reading:** see when your partner is reading the same book, and "follow" their page turns (great on a call)
 - Nudges: "Read with me? 🍋", "Goodnight read? 🌙", "Thinking of you 💛" as phone notifications
 - A shared reading streak: a lemon tree that grows every day you both read a few pages
+- Continue reading from the shelf; new books open at chapter one
+- Bookmarks, and an "Our book" keepsake page with your favorite moments
+- Zest and Bloom, your companion bots
 - Paper / Sepia / Night themes and font size, with your place saved automatically
 - Android: Share → Lemon sends a downloaded EPUB straight to your shelf
 
