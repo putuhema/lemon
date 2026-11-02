@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { loadBookFile } from "@/lib/bookCache";
 import { computeStreak, logPages, PAGES_PER_DAY } from "@/lib/streak";
 import { saveProgress, isOffline, useOffline } from "@/lib/offline";
+import { haptic, sinceLastHaptic } from "@/lib/haptics";
 import { bookCSS, DEFAULT_PREFS, THEMES, type Prefs } from "@/lib/readerStyle";
 import type { Annotation, Book, Bookmark, Progress, Reply } from "@/lib/types";
 import { collapse, compare } from "foliate-js/epubcfi.js";
@@ -188,6 +189,7 @@ function Reader() {
       const before = total - turned;
       // Celebrate the moment today's reading counts
       if (before < PAGES_PER_DAY && total >= PAGES_PER_DAY && meRef.current && partnerRef.current) {
+        haptic("success");
         const { data } = await supabase.from("reading_days").select("reader_id,day,pages");
         const s = computeStreak(data ?? [], meRef.current.id, partnerRef.current.id);
         toastRef.current(
@@ -319,6 +321,10 @@ function Reader() {
             maxRef.current = fraction;
             setMaxFraction(fraction);
           }
+          // Swiping turns pages without a tap: give those a tick too (Android)
+          if (last !== null && fraction !== last && Math.abs(fraction - last) < 0.02 && sinceLastHaptic() > 500) {
+            haptic("tick");
+          }
           lastFractionRef.current = fraction;
           scheduleSave();
           if (partnerHereRef.current) sendPosition({ bookId: id, ...l });
@@ -343,7 +349,10 @@ function Reader() {
               if (!sel || sel.isCollapsed || !text || sel.rangeCount === 0) {
                 setSelection((s) => (s && s.index === index ? null : s));
               } else {
-                setSelection({ index, range: sel.getRangeAt(0).cloneRange(), text });
+                setSelection((prev) => {
+                  if (!prev) haptic("tap");
+                  return { index, range: sel.getRangeAt(0).cloneRange(), text };
+                });
                 setChrome(false);
               }
             }, 250);
@@ -354,6 +363,9 @@ function Reader() {
             if ((ev.target as Element)?.closest?.("a[href]")) return;
             const frame = doc.defaultView?.frameElement as HTMLElement | null;
             const x = (frame?.getBoundingClientRect().left ?? 0) + ev.clientX;
+            // Haptics must play inside the tap itself (iPhone only allows it then)
+            const side = x < window.innerWidth * 0.28 || x > window.innerWidth * 0.72;
+            if (side) haptic("tick");
             setTimeout(() => {
               if (Date.now() - annTapAt.current < 500) return;
               const w = window.innerWidth;
@@ -444,6 +456,7 @@ function Reader() {
       if (status === "ready" && !greeted.current) {
         greeted.current = true;
         toast(`${partner.name} joined 💛`);
+        haptic("bump");
       }
     }
     if (!partnerHere && wasHere.current) setFollowing(false);
@@ -469,6 +482,7 @@ function Reader() {
           if (a.reader_id === partner.id &&
             a.fraction <= Math.max(maxRef.current, locRef.current?.fraction ?? 0) + SPOILER_SLACK) {
             toast(`${partner.name} ${a.note ? "left a note" : "highlighted something"} ${a.emoji ?? "💛"}`);
+            haptic("bump");
           }
         },
       )
@@ -523,6 +537,7 @@ function Reader() {
 
   // ---- Actions ---------------------------------------------------------------
   async function createAnnotation({ note, emoji }: { note?: string; emoji?: string }) {
+    haptic("success");
     const view = viewRef.current;
     const s = selection;
     if (!view || !s || !me) return;
@@ -558,6 +573,7 @@ function Reader() {
   }, [pageCfi, bookmarks]);
 
   async function toggleBookmark() {
+    haptic("tap");
     const l = locRef.current;
     if (!l || !me) return;
     if (pageBookmarks.length) {
@@ -728,6 +744,7 @@ function Reader() {
               ) : (
                 <button
                   onClick={async () => {
+                    haptic("tap");
                     toast(await nudge(id, "read"));
                   }}
                   className="h-9 shrink-0 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink"
@@ -780,6 +797,7 @@ function Reader() {
       {status === "ready" && returnTo && !chrome && !selection && (
         <button
           onClick={() => {
+            haptic("tick");
             const target = returnTo.cfi;
             setReturnTo(null);
             returnTurns.current = null;

@@ -11,6 +11,7 @@ import { uploadBook, deleteBook, takeSharedFile, type UploadPreview } from "@/li
 import { downloadedBookIds, ensureDownloaded, forgetBookFile } from "@/lib/bookCache";
 import { isOffline, useOffline } from "@/lib/offline";
 import { CloudOffIcon } from "lucide-react";
+import { haptic, hapticsEnabled, setHapticsEnabled } from "@/lib/haptics";
 import { pct } from "@/lib/format";
 import { BotHead } from "@/components/BotHead";
 import { enablePush, hasPushSubscription, isIOS, isStandalone, pushSupported } from "@/lib/push";
@@ -110,6 +111,7 @@ function Library() {
         });
         if (book) {
           await load();
+          haptic("success");
           toast("Added 🍋");
         }
       } catch (e) {
@@ -273,6 +275,7 @@ function Library() {
               onClick={async () => {
                 const b = menuBook;
                 setMenuBook(null);
+                haptic("tap");
                 toast(await nudge(b.id, "read"));
               }}
             >
@@ -415,9 +418,13 @@ function EmptyShelf({ onAdd }: { onAdd: () => void }) {
 function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { me, toast } = useLemon();
   const [pushOn, setPushOn] = useState<boolean | null>(null);
+  const [hapticsOn, setHapticsOn] = useState(true);
 
   useEffect(() => {
-    if (open) hasPushSubscription().then(setPushOn);
+    if (!open) return;
+    hasPushSubscription().then(setPushOn);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading a saved setting when the sheet opens
+    setHapticsOn(hapticsEnabled());
   }, [open]);
 
   const needsInstall = isIOS() && !isStandalone();
@@ -451,6 +458,21 @@ function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }
             </button>
           )}
         </div>
+        <label className="flex w-full items-center justify-between rounded-2xl bg-ink/5 px-4 py-3.5 font-medium">
+          Haptics
+          <input
+            type="checkbox"
+            // iPhone shows a native switch (and plays its own haptic when flipped)
+            {...{ switch: "" }}
+            checked={hapticsOn}
+            onChange={(e) => {
+              setHapticsEnabled(e.target.checked);
+              setHapticsOn(e.target.checked);
+              if (e.target.checked) haptic("tap");
+            }}
+            className="size-5 accent-[#E0AD00]"
+          />
+        </label>
         <button
           className="w-full rounded-2xl bg-ink/5 px-4 py-3.5 text-left font-medium"
           onClick={() => supabase.auth.signOut()}

@@ -15,6 +15,7 @@ import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { glassDense } from "./glass";
 import { flushOutbox } from "./offline";
+import { haptic } from "./haptics";
 import type { Activity, LivePosition, Reader } from "./types";
 import { NUDGES, type NudgeKind } from "./nudges";
 
@@ -154,6 +155,7 @@ export function LemonProvider({ children }: { children: ReactNode }) {
         .on("broadcast", { event: "nudge" }, ({ payload }) => {
           const p = payload as { text: string; bookId: string | null };
           toast(`${partner.name} ${p.text}`, p.bookId ? { label: "Join", href: `/read?b=${p.bookId}&join=1` } : undefined);
+          haptic("bump");
         })
         .subscribe((status) => {
           if (status === "SUBSCRIBED") channel!.track({ ...activityRef.current, at: Date.now() });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { haptic } from "@/lib/haptics";
 import { AnimatePresence, MotionConfig, motion, useDragControls, type PanInfo } from "motion/react";
 
 /** A floating bottom sheet. Drag the top (handle or title) down to close it. */
@@ -27,7 +28,10 @@ export function Sheet({
   }, [open, onClose]);
 
   const onDragEnd = (_: unknown, info: PanInfo) => {
-    if (info.offset.y > 90 || info.velocity.y > 500) onClose();
+    if (info.offset.y > 90 || info.velocity.y > 500) {
+      haptic("tick");
+      onClose();
+    }
   };
 
   const dark = tone === "dark";

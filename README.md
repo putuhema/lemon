@@ -11,6 +11,7 @@ A private ebook reader for two, made for reading together from far away.
 - Continue reading from the shelf; new books open at chapter one
 - Bookmarks, and an "Our book" keepsake page with your favorite moments
 - Zest and Bloom, your companion bots
+- Haptics on page turns, highlights and streak moments (Android; iPhone on iOS 18+)
 - Works offline: the shelf, books you've opened, and your place (saved and sent once you're back online)
 - Paper / Sepia / Night themes and font size, with your place saved automatically
 - Android: Share → Lemon sends a downloaded EPUB straight to your shelf

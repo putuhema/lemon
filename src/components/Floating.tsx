@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { LayoutGroup, motion, MotionConfig, type Transition } from "motion/react";
 import { BookOpenTextIcon, LibraryBigIcon, PlusIcon, type LucideIcon } from "lucide-react";
 import { glass } from "@/lib/glass";
+import { haptic } from "@/lib/haptics";
 
 const spring: Transition = { type: "spring", stiffness: 520, damping: 40 };
 
@@ -65,7 +66,7 @@ function NavItem({ item, active }: { item: Item; active: boolean }) {
   } ${disabled ? "pointer-events-none opacity-40" : ""}`;
 
   return (
-    <motion.div whileTap={{ scale: 0.92 }}>
+    <motion.div whileTap={{ scale: 0.92 }} onTap={() => !disabled && haptic("tick")}>
       {"href" in item ? (
         item.href ? (
           <Link href={item.href} aria-current={active ? "page" : undefined} className={className}>
