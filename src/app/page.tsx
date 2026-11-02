@@ -9,10 +9,13 @@ import { supabase, BUCKET } from "@/lib/supabase";
 import type { Book, Progress } from "@/lib/types";
 import { uploadBook, deleteBook, takeSharedFile } from "@/lib/upload";
 import { forgetBookFile } from "@/lib/bookCache";
-import { pct, timeAgo, initial } from "@/lib/format";
+import { pct, initial } from "@/lib/format";
 import { enablePush, hasPushSubscription, isIOS, isStandalone, pushSupported } from "@/lib/push";
 import { Avatar } from "@/components/Avatar";
 import { Sheet } from "@/components/Sheet";
+import { StreakCard } from "@/components/StreakCard";
+import { useStreak } from "@/lib/streak";
+import { BookOpenTextIcon, FloatingNav, LibraryBigIcon, PlusIcon, TopBar } from "@/components/Floating";
 
 export default function Page() {
   return (
@@ -34,6 +37,7 @@ function Library() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [nudgeOpen, setNudgeOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const streak = useStreak(me?.id, partner?.id);
 
   const load = useCallback(async () => {
     const [b, p] = await Promise.all([
@@ -77,8 +81,8 @@ function Library() {
       if (!me) return;
       setUploading(file.name);
       try {
-        const book = await uploadBook(file, me.id);
-        toast(`“${book.title}” is on both your shelves now 🍋`);
+        await uploadBook(file, me.id);
+        toast("Added 🍋");
         await load();
       } catch (e) {
         toast((e as Error).message);
@@ -107,69 +111,40 @@ function Library() {
     .filter((p) => p.reader_id === partner?.id)
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
   const lastPartnerBook = books?.find((b) => b.id === lastPartner?.book_id);
+  const myLastBook = progress
+    .filter((p) => p.reader_id === me.id && books?.some((b) => b.id === p.book_id))
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]?.book_id;
 
   return (
-    <main className="mx-auto min-h-dvh max-w-2xl px-5 pt-safe pb-32">
-      <header className="flex items-center justify-between pt-3">
-        <div className="flex items-center gap-2.5">
-          <img src="/icons/icon-192.png" alt="" className="size-9 rounded-xl" />
-          <h1 className="font-serif text-2xl font-semibold tracking-tight">Lemon</h1>
-        </div>
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className="flex items-center gap-1"
-          aria-label="Settings"
-        >
-          <Avatar reader={me} size={34} />
+    <main className="mx-auto min-h-dvh max-w-2xl px-5 pt-[calc(env(safe-area-inset-top)+76px)] pb-[calc(env(safe-area-inset-bottom)+104px)]">
+      <TopBar>
+        <img src="/icons/icon-192.png" alt="" className="size-7 rounded-lg" />
+        <h1 className="mr-auto font-serif text-lg font-semibold tracking-tight">Lemon</h1>
+        {partner &&
+          (partnerActivity && partnerBook ? (
+            <Link
+              href={`/read/${partnerBook.id}?join=1`}
+              className="flex h-9 items-center gap-2 rounded-full bg-lemon px-3 text-sm font-semibold shadow-[0_6px_18px_rgb(224_173_0/0.35)]"
+            >
+              <span className="size-2 rounded-full bg-leaf" />
+              Join {partner.name}
+            </Link>
+          ) : (
+            <button
+              onClick={() => setNudgeOpen(true)}
+              className="flex h-9 items-center gap-2 rounded-full border border-ink/10 px-3 text-sm"
+            >
+              <span className={`size-2 rounded-full ${partnerActivity ? "bg-leaf" : "bg-ink/25"}`} />
+              {partner.name}
+            </button>
+          ))}
+        <button onClick={() => setSettingsOpen(true)} aria-label="Settings" className="rounded-full">
+          <Avatar reader={me} size={36} />
         </button>
-      </header>
+      </TopBar>
 
-      {/* What your partner is up to */}
-      {partner && (
-        <section className="mt-6 rounded-3xl bg-paper p-4 shadow-sm ring-1 ring-ink/5">
-          <div className="flex items-center gap-3">
-            <div className={`rounded-full ${partnerActivity ? "live-pulse" : ""}`}>
-              <Avatar reader={partner} size={44} />
-            </div>
-            <div className="min-w-0 flex-1">
-              {partnerActivity && partnerBook ? (
-                <>
-                  <p className="font-medium">{partner.name} is reading right now</p>
-                  <p className="truncate text-sm text-muted">{partnerBook.title}</p>
-                </>
-              ) : partnerActivity ? (
-                <>
-                  <p className="font-medium">{partner.name} has Lemon open</p>
-                  <p className="text-sm text-muted">Browsing the shelf</p>
-                </>
-              ) : (
-                <>
-                  <p className="font-medium">{partner.name}</p>
-                  <p className="truncate text-sm text-muted">
-                    {lastPartnerBook
-                      ? `Last read ${lastPartnerBook.title} · ${timeAgo(lastPartner?.updated_at)}`
-                      : "Hasn’t started reading yet"}
-                  </p>
-                </>
-              )}
-            </div>
-            {partnerActivity && partnerBook ? (
-              <Link
-                href={`/read/${partnerBook.id}?join=1`}
-                className="shrink-0 rounded-full bg-lemon px-4 py-2 text-sm font-semibold"
-              >
-                Join
-              </Link>
-            ) : (
-              <button
-                onClick={() => setNudgeOpen(true)}
-                className="shrink-0 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-cream"
-              >
-                Nudge
-              </button>
-            )}
-          </div>
-        </section>
+      {streak && partner && (
+        <StreakCard streak={streak} me={me} partner={partner} />
       )}
 
       <div className="mt-8 flex items-baseline justify-between">
@@ -184,7 +159,7 @@ function Library() {
           ))}
         </div>
       ) : books.length === 0 ? (
-        <EmptyShelf onAdd={() => fileInput.current?.click()} partnerName={partner?.name} />
+        <EmptyShelf onAdd={() => fileInput.current?.click()} />
       ) : (
         <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3">
           {books.map((b) => {
@@ -234,24 +209,20 @@ function Library() {
           if (f) addFile(f);
         }}
       />
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center px-5 pb-safe">
-        <button
-          disabled={!!uploading}
-          onClick={() => fileInput.current?.click()}
-          className="pointer-events-auto mb-2 flex items-center gap-2 rounded-full bg-ink px-6 py-3.5 font-semibold text-cream shadow-xl transition active:scale-95 disabled:opacity-80"
-        >
-          {uploading ? (
-            <>
-              <span className="size-4 animate-spin rounded-full border-2 border-cream/30 border-t-cream" />
-              Adding book…
-            </>
-          ) : (
-            <>
-              <span className="text-lg leading-none">+</span> Add a book
-            </>
-          )}
-        </button>
-      </div>
+      <FloatingNav
+        active="shelf"
+        items={[
+          { id: "shelf", label: "Shelf", icon: LibraryBigIcon, href: "/" },
+          { id: "reading", label: "Reading", icon: BookOpenTextIcon, href: myLastBook ? `/read/${myLastBook}` : null },
+          {
+            id: "add",
+            label: uploading ? "Adding…" : "Add book",
+            icon: PlusIcon,
+            onClick: () => fileInput.current?.click(),
+            busy: !!uploading,
+          },
+        ]}
+      />
 
       <Sheet open={!!menuBook} onClose={() => setMenuBook(null)} title={menuBook?.title}>
         {menuBook && (
@@ -264,13 +235,13 @@ function Library() {
                 toast(await nudge(b.id, "read"));
               }}
             >
-              Ask {partner?.name} to read this with me
+              Read together
             </button>
             <button
               className="w-full rounded-2xl bg-red-50 px-4 py-3.5 text-left font-medium text-red-700"
               onClick={async () => {
                 const b = menuBook;
-                if (!confirm(`Remove “${b.title}” for both of you? Notes on it will be deleted too.`)) return;
+                if (!confirm(`Remove “${b.title}” for both of you?`)) return;
                 setMenuBook(null);
                 try {
                   await deleteBook(b);
@@ -281,13 +252,13 @@ function Library() {
                 }
               }}
             >
-              Remove from our shelf
+              Remove
             </button>
           </div>
         )}
       </Sheet>
 
-      <Sheet open={nudgeOpen} onClose={() => setNudgeOpen(false)} title={`Send ${partner?.name ?? ""} a little ping`}>
+      <Sheet open={nudgeOpen} onClose={() => setNudgeOpen(false)} title={`Nudge ${partner?.name ?? ""}`}>
         <div className="space-y-2">
           {(Object.keys(NUDGES) as NudgeKind[]).map((k) => (
             <button
@@ -343,23 +314,20 @@ function Cover({ book, url }: { book: Book; url?: string }) {
   );
 }
 
-function EmptyShelf({ onAdd, partnerName }: { onAdd: () => void; partnerName?: string }) {
+function EmptyShelf({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="mt-10 rounded-3xl border-2 border-dashed border-ink/10 px-6 py-12 text-center">
       <p className="text-4xl">🍋</p>
-      <p className="mt-3 font-serif text-lg font-semibold">Your shelf is empty</p>
-      <p className="mx-auto mt-1 max-w-xs text-sm text-muted">
-        Add an EPUB and it shows up on {partnerName ? `${partnerName}’s` : "both"} phone{partnerName ? " too" : "s"}.
-      </p>
-      <button onClick={onAdd} className="mt-5 rounded-full bg-lemon px-5 py-2.5 font-semibold">
-        Add the first book
+      <p className="mt-3 font-serif text-lg font-semibold">No books yet</p>
+      <button onClick={onAdd} className="mt-4 rounded-full bg-lemon px-5 py-2.5 font-semibold">
+        Add a book
       </button>
     </div>
   );
 }
 
 function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { me, partner, toast } = useLemon();
+  const { me, toast } = useLemon();
   const [pushOn, setPushOn] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -369,21 +337,17 @@ function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }
   const needsInstall = isIOS() && !isStandalone();
 
   return (
-    <Sheet open={open} onClose={onClose} title={`Hi, ${me?.name ?? ""}`}>
-      <div className="space-y-5">
+    <Sheet open={open} onClose={onClose} title={me?.name}>
+      <div className="space-y-2">
         <div>
-          <p className="mb-2 text-sm font-semibold">Notifications</p>
           {needsInstall ? (
-            <p className="rounded-2xl bg-lemon/25 p-4 text-sm leading-relaxed">
-              To get notifications on iPhone, first add Lemon to your Home Screen: tap{" "}
-              <b>Share</b> → <b>Add to Home Screen</b>, then open Lemon from there.
+            <p className="rounded-2xl bg-lemon/25 px-4 py-3.5 text-sm">
+              For notifications: <b>Share → Add to Home Screen</b>
             </p>
           ) : !pushSupported() ? (
-            <p className="text-sm text-muted">This browser can’t show notifications.</p>
+            <p className="text-sm text-muted">Notifications not supported</p>
           ) : pushOn ? (
-            <p className="rounded-2xl bg-leaf/10 p-4 text-sm text-leaf">
-              On. You’ll get a ping when {partner?.name} wants to read with you. 💛
-            </p>
+            <p className="rounded-2xl bg-leaf/10 px-4 py-3.5 text-sm font-medium text-leaf">Notifications on ✓</p>
           ) : (
             <button
               className="w-full rounded-2xl bg-lemon px-4 py-3.5 font-semibold"
@@ -401,12 +365,6 @@ function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }
             </button>
           )}
         </div>
-        {!isStandalone() && !needsInstall && (
-          <p className="text-sm text-muted">
-            Tip: use your browser menu → <b>Install app</b> / <b>Add to Home screen</b> so Lemon opens like a real
-            app.
-          </p>
-        )}
         <button
           className="w-full rounded-2xl bg-ink/5 px-4 py-3.5 text-left font-medium"
           onClick={() => supabase.auth.signOut()}

@@ -7,6 +7,7 @@ A private ebook reader for two, made for reading together from far away.
 - Highlights, notes, emoji reactions, and replies, with spoilers hidden until you reach them
 - **Live reading:** see when your partner is reading the same book, and "follow" their page turns (great on a call)
 - Nudges: "Read with me? 🍋", "Goodnight read? 🌙", "Thinking of you 💛" as phone notifications
+- A shared reading streak: a lemon tree that grows every day you both read a few pages
 - Paper / Sepia / Night themes and font size, with your place saved automatically
 - Android: Share → Lemon sends a downloaded EPUB straight to your shelf
 
@@ -18,7 +19,7 @@ Built with Next.js, [foliate-js](https://github.com/johnfactotum/foliate-js) (th
 
 ### 1. Create the database
 1. Make a free project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor**, paste all of `supabase/migrations/20261102000000_lemon.sql`, and click **Run**.
+2. Open **SQL Editor** and run each file in `supabase/migrations/`, oldest first: paste the whole file and click **Run**.
 3. Open **Project Settings → API Keys** and copy the **Project URL**, the **publishable key**, and the **secret key**.
 
 ### 2. Add your keys

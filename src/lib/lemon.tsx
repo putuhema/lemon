@@ -13,6 +13,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { glassDense } from "./glass";
 import type { Activity, LivePosition, Reader } from "./types";
 import { NUDGES, type NudgeKind } from "./nudges";
 
@@ -129,8 +130,9 @@ export function LemonProvider({ children }: { children: ReactNode }) {
 
       channel
         .on("presence", { event: "sync" }, () => {
-          const state = channel!.presenceState<Activity>();
-          const theirs = state[partner.id]?.[0];
+          const state = channel!.presenceState<Activity & { at?: number }>();
+          // A phone can show up more than once (e.g. after a reconnect): trust the newest update.
+          const theirs = [...(state[partner.id] ?? [])].sort((a, b) => (b.at ?? 0) - (a.at ?? 0))[0];
           setPartnerActivity(
             theirs ? { bookId: theirs.bookId ?? null, following: !!theirs.following } : null,
           );
@@ -144,13 +146,13 @@ export function LemonProvider({ children }: { children: ReactNode }) {
           toast(`${partner.name} ${p.text}`, p.bookId ? { label: "Join", href: `/read/${p.bookId}?join=1` } : undefined);
         })
         .subscribe((status) => {
-          if (status === "SUBSCRIBED") channel!.track(activityRef.current);
+          if (status === "SUBSCRIBED") channel!.track({ ...activityRef.current, at: Date.now() });
         });
     })();
 
     // Re-announce when the app comes back to the foreground (phones pause sockets)
     const onVisible = () => {
-      if (document.visibilityState === "visible") channelRef.current?.track(activityRef.current);
+      if (document.visibilityState === "visible") channelRef.current?.track({ ...activityRef.current, at: Date.now() });
     };
     document.addEventListener("visibilitychange", onVisible);
 
@@ -164,7 +166,7 @@ export function LemonProvider({ children }: { children: ReactNode }) {
 
   const setActivity = useCallback((a: Activity) => {
     activityRef.current = a;
-    channelRef.current?.track(a);
+    channelRef.current?.track({ ...a, at: Date.now() });
   }, []);
 
   const sendPosition = useCallback((p: LivePosition) => {
@@ -195,11 +197,11 @@ export function LemonProvider({ children }: { children: ReactNode }) {
       }).catch(() => null);
       const sent: number = res?.ok ? ((await res.json()).sent ?? 0) : 0;
       const name = partnerRef.current?.name ?? "They";
-      if (sent > 0) return `Sent to ${name}’s phone 💌`;
-      if (partnerOnlineRef.current) return `Sent 💌 (${name} has Lemon open)`;
+      if (sent > 0) return "Sent 💌";
+      if (partnerOnlineRef.current) return "Sent 💌";
       return res?.ok
-        ? `${name} hasn’t turned on notifications yet`
-        : "Couldn’t send the notification";
+        ? `${name}’s notifications are off`
+        : "Couldn’t send";
     },
     [],
   );
@@ -226,16 +228,16 @@ export function LemonProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center gap-2 px-4 pt-[max(env(safe-area-inset-top),12px)]">
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center gap-2 px-4 pt-[calc(env(safe-area-inset-top)+64px)]">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="toast-in pointer-events-auto flex max-w-md items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-sm text-cream shadow-lg"
+            className={`toast-in pointer-events-auto flex max-w-md items-center gap-3 rounded-full py-2 pr-2 pl-4 text-sm text-ink ${glassDense}`}
           >
             <span>{t.text}</span>
             {t.action && (
               <button
-                className="shrink-0 rounded-full bg-lemon px-3 py-1 font-semibold text-ink"
+                className="shrink-0 rounded-full bg-lemon px-3 py-1.5 font-semibold text-ink"
                 onClick={() => {
                   setToasts((all) => all.filter((x) => x.id !== t.id));
                   router.push(t.action!.href);

@@ -8,11 +8,24 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useLemon } from "@/lib/lemon";
 import { supabase } from "@/lib/supabase";
 import { loadBookFile } from "@/lib/bookCache";
+import { computeStreak, logPages, PAGES_PER_DAY } from "@/lib/streak";
 import { bookCSS, DEFAULT_PREFS, THEMES, type Prefs } from "@/lib/readerStyle";
 import type { Annotation, Book, Progress, Reply } from "@/lib/types";
 import { pct, timeAgo } from "@/lib/format";
 import { Avatar } from "@/components/Avatar";
 import { Sheet } from "@/components/Sheet";
+import { readerGlass, readerGlassDark } from "@/lib/glass";
+import {
+  ALargeSmallIcon,
+  ChevronLeftIcon,
+  CopyIcon,
+  HighlighterIcon,
+  ListIcon,
+  LocateFixedIcon,
+  MessageSquareQuoteIcon,
+  PenLineIcon,
+  type LucideIcon,
+} from "lucide-react";
 
 const EMOJI = ["💛", "😂", "😭", "🥹", "🔥", "😮"];
 /** Partner notes unlock once you've read up to them (with a little wiggle room for different screen sizes). */
@@ -91,6 +104,7 @@ function Reader() {
   const locRef = useRef<Loc | null>(null);
   const lastFractionRef = useRef<number | null>(null);
   const maxRef = useRef(0);
+  const pagesRef = useRef(0);
   const finishedRef = useRef<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const annTapAt = useRef(0);
@@ -100,10 +114,14 @@ function Reader() {
   const partnerHereRef = useRef(false);
   const prefsRef = useRef(prefs);
   const meRef = useRef(me);
+  const partnerRef = useRef(partner);
+  const toastRef = useRef(toast);
   const colorOfRef = useRef(colorOf);
   useEffect(() => {
     prefsRef.current = prefs;
     meRef.current = me;
+    partnerRef.current = partner;
+    toastRef.current = toast;
     colorOfRef.current = colorOf;
   });
 
@@ -126,6 +144,24 @@ function Reader() {
   });
 
   // ---- Saving my place --------------------------------------------------------
+  const onPagesLogged = useCallback(
+    async (total: number | null, turned: number) => {
+      if (total === null) return;
+      const before = total - turned;
+      // Celebrate the moment today's reading counts
+      if (before < PAGES_PER_DAY && total >= PAGES_PER_DAY && meRef.current && partnerRef.current) {
+        const { data } = await supabase.from("reading_days").select("reader_id,day,pages");
+        const s = computeStreak(data ?? [], meRef.current.id, partnerRef.current.id);
+        toastRef.current(
+          s.partnerToday
+            ? `The tree grew 🍋 Day ${s.current}`
+            : "Today’s pages ✓",
+        );
+      }
+    },
+    [],
+  );
+
   const saveNow = useCallback(async () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = null;
@@ -133,6 +169,9 @@ function Reader() {
     const meNow = meRef.current;
     if (!l || !meNow) return;
     if (!finishedRef.current && l.fraction >= 0.99) finishedRef.current = new Date().toISOString();
+    const turned = pagesRef.current;
+    pagesRef.current = 0;
+    if (turned > 0) logPages(turned).then((total) => onPagesLogged(total, turned));
     await supabase.from("progress").upsert({
       reader_id: meNow.id,
       book_id: id,
@@ -143,7 +182,7 @@ function Reader() {
       finished_at: finishedRef.current,
       updated_at: new Date().toISOString(),
     });
-  }, [id]);
+  }, [id, onPagesLogged]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -224,6 +263,8 @@ function Reader() {
           // Reading page by page moves your "read up to here" mark. Big jumps (slider, jumping
           // to your partner) don't, so you don't see their notes on pages you skipped.
           const last = lastFractionRef.current;
+          // A forward page turn counts toward today's reading streak
+          if (last !== null && fraction > last && fraction - last < 0.02) pagesRef.current++;
           if (last !== null && fraction > maxRef.current && fraction - last > 0 && fraction - last < 0.02) {
             maxRef.current = fraction;
             setMaxFraction(fraction);
@@ -285,7 +326,7 @@ function Reader() {
         await view.init({ lastLocation: start, showTextStart: !start });
         if (cancelled) return;
         setStatus("ready");
-        if (joinOnOpen) toast(`Jumped to ${partner.name}’s page 💛`);
+        if (joinOnOpen) toast(`On ${partner.name}’s page 💛`);
       } catch (err) {
         if (cancelled) return;
         console.error(err);
@@ -315,6 +356,7 @@ function Reader() {
 
   // ---- Theme ----------------------------------------------------------------
   const theme = THEMES[prefs.theme];
+  const g = prefs.theme === "night" ? readerGlassDark : readerGlass;
   useEffect(() => {
     const view = viewRef.current;
     if (status !== "ready" || !view) return;
@@ -340,7 +382,7 @@ function Reader() {
       // Say hello once per session; the live pill shows the rest.
       if (status === "ready" && !greeted.current) {
         greeted.current = true;
-        toast(`${partner.name} is reading with you 💛`);
+        toast(`${partner.name} joined 💛`);
       }
     }
     if (!partnerHere && wasHere.current) setFollowing(false);
@@ -437,7 +479,7 @@ function Reader() {
     setSelection(null);
     setComposer(false);
     const { data, error } = await supabase.from("annotations").insert(row).select().single();
-    if (error) return toast("Couldn’t save that highlight");
+    if (error) return toast("Couldn’t save");
     setAnns((all) => [...all.filter((x) => x.id !== data.id), data as Annotation]);
   }
 
@@ -506,83 +548,95 @@ function Reader() {
       )}
 
       {/* Live pill: partner is in this book right now */}
-      {status === "ready" && partnerHere && !chrome && (
+      {status === "ready" && partnerHere && (
         <button
           onClick={() => setPanel("live")}
-          className="fade-in absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full py-1 pr-3 pl-1 text-xs font-medium shadow-md"
-          style={{ top: "calc(env(safe-area-inset-top) + 8px)", background: theme.chrome, color: theme.fg }}
+          className={`absolute left-1/2 z-20 flex h-9 -translate-x-1/2 items-center gap-2 rounded-full pr-3.5 pl-1 text-xs font-medium transition-[translate,opacity] duration-300 ease-out ${g} ${
+            chrome ? "pointer-events-none -translate-y-3 opacity-0" : ""
+          }`}
+          style={{ top: "calc(env(safe-area-inset-top) + 10px)", color: theme.fg }}
         >
           <span className="live-pulse rounded-full">
-            <Avatar reader={partner} size={22} />
+            <Avatar reader={partner} size={26} />
           </span>
           {following ? `Following ${partner.name}` : partnerFollowingMe ? `${partner.name} is following you` : `${partner.name} is here`}
-          {partnerPos?.chapter && !following && <span className="max-w-[9rem] truncate opacity-60">· {partnerPos.chapter}</span>}
         </button>
       )}
 
-      {/* Controls */}
-      {status === "ready" && chrome && (
+      {/* Floating controls: slide in when you tap the middle of the page */}
+      {status === "ready" && (
         <>
-          <div
-            className="fade-in absolute inset-x-0 top-0 z-20 flex items-center gap-2 px-3 pb-2 shadow-sm"
-            style={{ background: theme.chrome, paddingTop: "max(env(safe-area-inset-top), 10px)" }}
+          <header
+            inert={!chrome}
+            className={`pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-[calc(env(safe-area-inset-top)+8px)] transition-[translate,opacity] duration-300 ease-out ${
+              chrome ? "" : "-translate-y-[120%] opacity-0"
+            }`}
           >
-            <Link href="/" className="grid size-10 place-items-center rounded-full text-xl" aria-label="Back to shelf">
-              ‹
-            </Link>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-serif text-[15px] font-semibold">{book?.title}</p>
-              <p className="truncate text-xs" style={{ color: theme.muted }}>
-                {loc?.chapter}
-              </p>
+            <div
+              className={`pointer-events-auto mx-auto flex h-12 max-w-2xl items-center gap-1 rounded-full pr-1.5 pl-1 ${g}`}
+              style={{ color: theme.fg }}
+            >
+              <Link href="/" className="grid size-10 shrink-0 place-items-center rounded-full hover:bg-black/5" aria-label="Back to shelf">
+                <ChevronLeftIcon className="size-5" />
+              </Link>
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="truncate font-serif text-[15px] font-semibold">{book?.title}</p>
+                <p className="truncate text-[11px]" style={{ color: theme.muted }}>
+                  {loc?.chapter}
+                </p>
+              </div>
+              {partnerHere ? (
+                <button
+                  onClick={() => setPanel("live")}
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink shadow-[0_6px_18px_rgb(224_173_0/0.35)]"
+                >
+                  <span className="size-2 rounded-full bg-leaf" /> Live
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    toast(await nudge(id, "read"));
+                  }}
+                  className="h-9 shrink-0 rounded-full bg-lemon px-3.5 text-xs font-semibold text-ink shadow-[0_6px_18px_rgb(224_173_0/0.35)]"
+                >
+                  Read with me?
+                </button>
+              )}
             </div>
-            {partnerHere ? (
-              <button
-                onClick={() => setPanel("live")}
-                className="flex items-center gap-1.5 rounded-full bg-lemon px-3 py-2 text-xs font-semibold text-ink"
-              >
-                <span className="size-2 rounded-full bg-leaf" /> Live
-              </button>
-            ) : (
-              <button
-                onClick={async () => {
-                  toast(await nudge(id, "read"));
-                }}
-                className="rounded-full bg-lemon px-3 py-2 text-xs font-semibold text-ink"
-              >
-                Read with me?
-              </button>
-            )}
-          </div>
+          </header>
 
           <div
-            className="fade-in absolute inset-x-0 bottom-0 z-20 px-5 pt-4 shadow-[0_-1px_8px_rgba(0,0,0,.06)]"
-            style={{ background: theme.chrome, paddingBottom: "max(env(safe-area-inset-bottom), 14px)" }}
+            inert={!chrome}
+            className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] transition-[translate,opacity] duration-300 ease-out ${
+              chrome ? "" : "translate-y-[120%] opacity-0"
+            }`}
           >
-            <ProgressTrack
-              me={{ color: me.color, fraction: loc?.fraction ?? 0 }}
-              partner={partnerPos ? { color: partner.color, fraction: partnerPos.fraction, name: partner.name } : null}
-              onSeek={(f) => {
-                setFollowing(false);
-                viewRef.current?.goToFraction(f);
-              }}
-              onPartner={() => partnerPos && jumpTo(partnerPos.cfi)}
-              muted={theme.muted}
-            />
-            <div className="mt-4 grid grid-cols-4 gap-1 text-xs">
-              <ChromeButton icon="☰" label="Contents" onClick={() => setPanel("toc")} />
-              <ChromeButton
-                icon="✎"
-                label={visible.length ? `Notes · ${visible.length}` : "Notes"}
-                onClick={() => setPanel("notes")}
+            <div className={`pointer-events-auto w-full max-w-lg rounded-[28px] px-4 pt-3 pb-1.5 ${g}`} style={{ color: theme.fg }}>
+              <ProgressTrack
+                me={{ color: me.color, fraction: loc?.fraction ?? 0 }}
+                partner={partnerPos ? { color: partner.color, fraction: partnerPos.fraction, name: partner.name } : null}
+                onSeek={(f) => {
+                  setFollowing(false);
+                  viewRef.current?.goToFraction(f);
+                }}
+                onPartner={() => partnerPos && jumpTo(partnerPos.cfi)}
+                muted={theme.muted}
               />
-              <ChromeButton
-                icon="➜"
-                label={`To ${partner.name}`}
-                disabled={!partnerPos}
-                onClick={() => partnerPos && jumpTo(partnerPos.cfi)}
-              />
-              <ChromeButton icon="Aa" label="Text" onClick={() => setPanel("type")} />
+              <div className="mt-2 grid grid-cols-4 text-[10.5px]">
+                <ChromeButton icon={ListIcon} label="Contents" onClick={() => setPanel("toc")} />
+                <ChromeButton
+                  icon={MessageSquareQuoteIcon}
+                  label={visible.length ? `Notes · ${visible.length}` : "Notes"}
+                  onClick={() => setPanel("notes")}
+                />
+                <ChromeButton
+                  icon={LocateFixedIcon}
+                  label={`To ${partner.name}`}
+                  disabled={!partnerPos}
+                  onClick={() => partnerPos && jumpTo(partnerPos.cfi)}
+                />
+                <ChromeButton icon={ALargeSmallIcon} label="Text" onClick={() => setPanel("type")} />
+              </div>
             </div>
           </div>
         </>
@@ -591,8 +645,8 @@ function Reader() {
       {/* Selection actions */}
       {selection && !composer && (
         <div
-          className="sheet-in absolute inset-x-3 z-30 mx-auto max-w-md rounded-3xl p-3 shadow-2xl ring-1 ring-black/5"
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)", background: theme.chrome }}
+          className={`sheet-in absolute inset-x-3 z-30 mx-auto max-w-md rounded-[28px] p-2.5 ${g}`}
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)", color: theme.fg }}
           onPointerDown={(e) => e.preventDefault()}
         >
           <div className="flex justify-between px-1">
@@ -600,18 +654,25 @@ function Reader() {
               <button
                 key={e}
                 onClick={() => createAnnotation({ emoji: e })}
-                className="grid size-11 place-items-center rounded-full text-2xl active:scale-90 transition-transform"
+                className="grid size-11 place-items-center rounded-full text-2xl transition-transform active:scale-90"
               >
                 {e}
               </button>
             ))}
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-semibold">
-            <button onClick={() => createAnnotation({})} className="rounded-2xl py-2.5" style={{ background: me.color + "55" }}>
-              Highlight
+          <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-sm font-semibold">
+            <button
+              onClick={() => createAnnotation({})}
+              className="flex h-11 items-center justify-center gap-1.5 rounded-full"
+              style={{ background: me.color + "55" }}
+            >
+              <HighlighterIcon className="size-4" /> Highlight
             </button>
-            <button onClick={() => setComposer(true)} className="rounded-2xl bg-lemon py-2.5 text-ink">
-              Add note
+            <button
+              onClick={() => setComposer(true)}
+              className="flex h-11 items-center justify-center gap-1.5 rounded-full bg-lemon text-ink shadow-[0_6px_18px_rgb(224_173_0/0.35)]"
+            >
+              <PenLineIcon className="size-4" /> Note
             </button>
             <button
               onClick={() => {
@@ -620,10 +681,10 @@ function Reader() {
                 setSelection(null);
                 toast("Copied");
               }}
-              className="rounded-2xl py-2.5"
-              style={{ background: "rgba(127,127,127,.12)" }}
+              className="flex h-11 items-center justify-center gap-1.5 rounded-full"
+              style={{ background: "rgba(127,127,127,.14)" }}
             >
-              Copy
+              <CopyIcon className="size-4" /> Copy
             </button>
           </div>
         </div>
@@ -632,7 +693,6 @@ function Reader() {
       <NoteComposer
         open={composer && !!selection}
         quote={selection?.text ?? ""}
-        partnerName={partner.name}
         onCancel={() => setComposer(false)}
         onSave={(note, emoji) => createAnnotation({ note, emoji })}
       />
@@ -656,9 +716,9 @@ function Reader() {
         )}
       </Sheet>
 
-      <Sheet open={panel === "notes"} onClose={() => setPanel(null)} title="Our notes" tone={prefs.theme === "night" ? "dark" : "light"}>
+      <Sheet open={panel === "notes"} onClose={() => setPanel(null)} title="Notes" tone={prefs.theme === "night" ? "dark" : "light"}>
         {visible.length === 0 && (
-          <p className="text-sm opacity-70">Select any text to highlight it or leave a note for {partner.name}.</p>
+          <p className="text-sm opacity-70">Select text to highlight</p>
         )}
         <div className="space-y-3">
           {visible.map((a) => (
@@ -688,7 +748,7 @@ function Reader() {
         </div>
         {lockedCount > 0 && (
           <p className="mt-4 rounded-2xl bg-lemon/20 p-3 text-center text-sm">
-            🔒 {lockedCount} {lockedCount === 1 ? "note" : "notes"} from {partner.name} further ahead. Keep reading to unlock.
+            🔒 {lockedCount} more from {partner.name} ahead
           </p>
         )}
       </Sheet>
@@ -769,20 +829,16 @@ function Reader() {
       <Sheet
         open={panel === "live"}
         onClose={() => setPanel(null)}
-        title={partnerHere ? `Reading with ${partner.name} 💛` : `${partner.name} left`}
+        title={`Reading with ${partner.name}`}
         tone={prefs.theme === "night" ? "dark" : "light"}
       >
         {partnerHere && (
           <div className="space-y-2">
-            <p className="mb-3 text-sm opacity-70">
-              {partner.name} is at {pct(partnerPos?.fraction)}
-              {partnerPos?.chapter ? ` · ${partnerPos.chapter}` : ""}.
-            </p>
             <button
               onClick={() => partnerPos && jumpTo(partnerPos.cfi)}
               className="w-full rounded-2xl bg-lemon px-4 py-3.5 text-left font-semibold text-ink"
             >
-              Jump to {partner.name}’s page
+              Go to {partner.name}’s page
             </button>
             <button
               disabled={partnerFollowingMe}
@@ -794,12 +850,10 @@ function Reader() {
               className="w-full rounded-2xl px-4 py-3.5 text-left font-semibold disabled:opacity-50"
               style={{ background: "rgba(127,127,127,.12)" }}
             >
-              {following ? "Stop following" : `Follow ${partner.name}’s pages`}
-              <span className="block text-xs font-normal opacity-70">
-                {partnerFollowingMe
-                  ? `${partner.name} is already following you`
-                  : "Great for reading aloud on a call. Your page turns when theirs does."}
-              </span>
+              {following ? "Stop following" : `Follow ${partner.name}’s page turns`}
+              {partnerFollowingMe && (
+                <span className="block text-xs font-normal opacity-70">{partner.name} is following you</span>
+              )}
             </button>
           </div>
         )}
@@ -808,15 +862,25 @@ function Reader() {
   );
 }
 
-function ChromeButton({ icon, label, onClick, disabled }: { icon: string; label: string; onClick: () => void; disabled?: boolean }) {
+function ChromeButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex flex-col items-center gap-1 rounded-2xl py-2 active:bg-black/5 disabled:opacity-40"
+      className="flex h-14 flex-col items-center justify-center gap-1 rounded-full transition-transform active:scale-95 active:bg-black/5 disabled:opacity-40"
     >
-      <span className="text-lg leading-none">{icon}</span>
-      <span className="truncate">{label}</span>
+      <Icon className="size-5" strokeWidth={1.8} />
+      <span className="max-w-full truncate px-1 leading-none">{label}</span>
     </button>
   );
 }
@@ -908,13 +972,11 @@ function TocList({ items, current, onGo, depth = 0 }: { items: TocItem[]; curren
 function NoteComposer({
   open,
   quote,
-  partnerName,
   onCancel,
   onSave,
 }: {
   open: boolean;
   quote: string;
-  partnerName: string;
   onCancel: () => void;
   onSave: (note: string, emoji?: string) => void;
 }) {
@@ -927,14 +989,14 @@ function NoteComposer({
         setText("");
         onCancel();
       }}
-      title="Leave a note"
+      title="Note"
     >
       <p className="line-clamp-3 border-l-4 border-lemon pl-3 font-serif text-[15px] italic text-ink/80">“{quote}”</p>
       <textarea
         autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={`What do you want ${partnerName} to know?`}
+        placeholder="Write a note…"
         rows={3}
         className="mt-4 w-full resize-none rounded-2xl border border-ink/10 bg-white/60 p-3 outline-none focus:border-lemon-deep"
       />
