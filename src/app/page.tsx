@@ -21,6 +21,7 @@ import { StreakCard } from "@/components/StreakCard";
 import { ContinueCard } from "@/components/ContinueCard";
 import { useStreak } from "@/lib/streak";
 import { BookOpenTextIcon, FloatingNav, LibraryBigIcon, PlusIcon } from "@/components/Floating";
+import { LemonMark } from "@/components/LemonMark";
 
 export default function Page() {
   return (
@@ -523,10 +524,12 @@ function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }
   );
 }
 
+// Android already shows its own splash while the app starts, so this one stays a plain
+// background and only shows the lemon if loading takes a while (no second splash).
 function Splash() {
   return (
     <main className="grid min-h-dvh place-items-center">
-      <img src="/icons/icon-192.png" alt="" className="size-20 animate-pulse rounded-3xl" />
+      <LemonMark className="splash-mark size-24" />
     </main>
   );
 }

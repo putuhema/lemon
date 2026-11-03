@@ -48,6 +48,7 @@ import {
   PenLineIcon,
   type LucideIcon,
 } from "lucide-react";
+import { LemonMark } from "@/components/LemonMark";
 
 const EMOJI = ["💛", "😂", "😭", "🥹", "🔥", "😮"];
 const onAndroid =
@@ -981,11 +982,7 @@ function Reader() {
           style={{ background: theme.bg }}
         >
           <div className="text-center">
-            <img
-              src="/icons/icon-192.png"
-              alt=""
-              className="mx-auto size-16 animate-pulse rounded-2xl"
-            />
+            <LemonMark className="mx-auto size-16 animate-pulse" />
             <p className="mt-3 text-sm" style={{ color: theme.muted }}>
               Opening {book?.title ?? "your book"}…
             </p>
