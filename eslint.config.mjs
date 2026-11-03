@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The Stageshow kit, copied in as a library for the /features demo
+    "src/stageshow/**",
   ]),
 ]);
 

@@ -118,9 +118,9 @@ export function LemonProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("online", flushOutbox);
   }, [userId]);
 
-  // Redirects
+  // Redirects (the /features page is public)
   useEffect(() => {
-    if (!authChecked) return;
+    if (!authChecked || pathname === "/features") return;
     if (!session && pathname !== "/login") router.replace("/login");
     if (session && pathname === "/login") router.replace("/");
   }, [authChecked, session, pathname, router]);
