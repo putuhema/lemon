@@ -50,6 +50,8 @@ import {
 } from "lucide-react";
 
 const EMOJI = ["💛", "😂", "😭", "🥹", "🔥", "😮"];
+const onAndroid =
+  typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 /** Partner notes unlock once you've read up to them (with a little wiggle room for different screen sizes). */
 const SPOILER_SLACK = 0.003;
 
@@ -621,10 +623,18 @@ function Reader() {
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute("content", theme.bg);
-    return () =>
+    // Android colors its bottom bar from the page behind the reader, so paint that
+    // in the book's color too (otherwise a cream strip shows under a dark page).
+    const root = document.documentElement;
+    root.style.backgroundColor = theme.bg;
+    document.body.style.backgroundColor = theme.bg;
+    return () => {
       document
         .querySelector('meta[name="theme-color"]')
         ?.setAttribute("content", barColor());
+      root.style.backgroundColor = "";
+      document.body.style.backgroundColor = "";
+    };
   }, [prefs, status, theme.bg]);
 
   // ---- Live: tell my partner I'm here, and follow them if asked --------------
@@ -1281,9 +1291,13 @@ function Reader() {
       {/* Selection actions */}
       {selection && !composer && (
         <div
-          className={`sheet-in absolute inset-x-3 z-30 mx-auto max-w-md rounded-[28px] p-2.5 ${g}`}
+          className={`${onAndroid ? "drop-in" : "sheet-in"} absolute inset-x-3 z-30 mx-auto max-w-md rounded-[28px] p-2.5 ${g}`}
+          // Android Chrome puts its own Google search bar at the bottom when you select
+          // text, and pages can't turn it off — so our bar sits at the top there.
           style={{
-            bottom: "calc(env(safe-area-inset-bottom) + 12px)",
+            ...(onAndroid
+              ? { top: "calc(env(safe-area-inset-top) + 12px)" }
+              : { bottom: "calc(env(safe-area-inset-bottom) + 12px)" }),
             color: theme.fg,
           }}
           onPointerDown={(e) => e.preventDefault()}
