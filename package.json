@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "setup": "node scripts/setup.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "postinstall": "node scripts/patch-foliate.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
