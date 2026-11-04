@@ -337,3 +337,13 @@ textarea {
   line-height: 0;
   user-select: none;
 }
+
+/* Phones: no scrollbars (you scroll with your finger, so they're only clutter) */
+@media (pointer: coarse) {
+  * {
+    scrollbar-width: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+  }
+}

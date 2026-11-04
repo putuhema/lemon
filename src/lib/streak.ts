@@ -46,6 +46,10 @@ export type Streak = {
   partnerToday: boolean;
   /** Last 7 days, oldest first: who read that day. */
   week: { day: string; me: boolean; partner: boolean }[];
+  /** Today on this phone (YYYY-MM-DD). */
+  today: string;
+  /** Who read on any day (YYYY-MM-DD). */
+  on: (day: string) => { me: boolean; partner: boolean };
 };
 
 /**
@@ -89,6 +93,8 @@ export function computeStreak(rows: DayRow[], meId: string, partnerId: string, t
     meToday: mine.has(today),
     partnerToday: partnerOn(today),
     week,
+    today,
+    on: (day) => ({ me: mine.has(day), partner: partnerOn(day) }),
   };
 }
 

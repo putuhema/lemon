@@ -1,41 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { CloudOffIcon, ExternalLinkIcon, FileTextIcon, LinkIcon, NewspaperIcon, UploadIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ExternalLinkIcon, FileTextIcon, LinkIcon, NewspaperIcon, UploadIcon } from "lucide-react";
 import { useLemon } from "@/lib/lemon";
 import { supabase } from "@/lib/supabase";
 import type { Paper, PaperProgress } from "@/lib/types";
 import { addPaperFromLink, deletePaper, PAPER_COLUMNS, uploadPaper } from "@/lib/papers";
 import { useOffline } from "@/lib/offline";
+import { ShelfHeading } from "./ShelfHeading";
 import { haptic } from "@/lib/haptics";
-import { BotHead } from "@/components/BotHead";
 import { Sheet } from "@/components/Sheet";
-import { SettingsSheet } from "@/components/SettingsSheet";
-import { FridgeNote } from "@/components/FridgeNote";
-import { NotMember, Splash } from "@/components/Gate";
 import { Bar } from "@/components/ProgressBar";
-import { BookOpenTextIcon, FloatingNav, LibraryBigIcon, PlusIcon } from "@/components/Floating";
-
-export default function Page() {
-  return (
-    <Suspense>
-      <Journals />
-    </Suspense>
-  );
-}
 
 type Adding = { label: string; progress: number };
 
-function Journals() {
-  const { ready, me, partner, notMember, toast, nudge } = useLemon();
+/** Journal papers and articles you're reading together. */
+export function JournalShelf() {
+  const { me, partner, toast, nudge } = useLemon();
   const [papers, setPapers] = useState<Paper[] | null>(null);
   const [progress, setProgress] = useState<PaperProgress[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState<Adding | null>(null);
   const [menuPaper, setMenuPaper] = useState<Paper | null>(null);
   const [removeAsk, setRemoveAsk] = useState<Paper | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const offline = useOffline();
 
   const load = useCallback(async () => {
@@ -113,36 +101,20 @@ function Journals() {
     [toast, added],
   );
 
-  if (!ready || !me) {
-    return notMember ? <NotMember /> : <Splash />;
-  }
+  if (!me) return null;
 
   const prog = (paperId: string, readerId?: string) =>
     progress.find((p) => p.paper_id === paperId && p.reader_id === readerId);
-  const myLast = progress
-    .filter((p) => p.reader_id === me.id && !p.finished_at && papers?.some((x) => x.id === p.paper_id))
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]?.paper_id;
 
   return (
-    <main className="mx-auto min-h-dvh max-w-2xl px-5 pt-[calc(env(safe-area-inset-top)+20px)] pb-[calc(env(safe-area-inset-bottom)+104px)]">
-      {offline && (
-        <p className="mb-3 flex items-center justify-center gap-1.5 text-xs font-medium text-muted" role="status">
-          <CloudOffIcon className="size-3.5" /> Offline
-        </p>
-      )}
-
-      <div className="mb-8 pt-2">
-        <FridgeNote />
-      </div>
-
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-serif text-xl font-semibold">Our journals</h2>
-        {papers && papers.length > 0 && (
-          <span className="text-sm text-muted">
-            {papers.length} {papers.length === 1 ? "paper" : "papers"}
-          </span>
-        )}
-      </div>
+    <>
+      <ShelfHeading
+        title="Our journals"
+        count={papers && papers.length > 0 ? `${papers.length} ${papers.length === 1 ? "paper" : "papers"}` : undefined}
+        addLabel="Add a journal"
+        busy={adding ? (adding.progress > 0 ? `${Math.round(adding.progress * 100)}%` : "Adding…") : undefined}
+        onAdd={() => (offline ? toast("You’re offline") : setAddOpen(true))}
+      />
 
       {papers === null ? (
         <div className="mt-5 space-y-3">
@@ -209,28 +181,6 @@ function Journals() {
         </div>
       )}
 
-      <FloatingNav
-        active="journals"
-        items={[
-          { id: "shelf", label: "Books", icon: LibraryBigIcon, href: "/" },
-          { id: "journals", label: "Journals", icon: NewspaperIcon, href: "/journals" },
-          { id: "reading", label: "Reading", icon: BookOpenTextIcon, href: myLast ? `/paper?p=${myLast}` : null },
-          {
-            id: "add",
-            label: adding ? (adding.progress > 0 ? `${Math.round(adding.progress * 100)}%` : "Adding…") : "Add",
-            icon: PlusIcon,
-            onClick: () => (offline ? toast("You’re offline") : setAddOpen(true)),
-            busy: !!adding,
-          },
-          {
-            id: "me",
-            label: me.name,
-            icon: <BotHead color={me.color} size={26} label={me.name} />,
-            onClick: () => setSettingsOpen(true),
-          },
-        ]}
-      />
-
       <AddSheet open={addOpen} onClose={() => setAddOpen(false)} onFile={addFile} onLink={addLink} />
 
       <Sheet open={!!menuPaper} onClose={() => setMenuPaper(null)} title={menuPaper?.title}>
@@ -293,8 +243,7 @@ function Journals() {
         </div>
       </Sheet>
 
-      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-    </main>
+    </>
   );
 }
 

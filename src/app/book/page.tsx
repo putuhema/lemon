@@ -73,7 +73,7 @@ function OurBook() {
   return (
     <main className="mx-auto min-h-dvh max-w-2xl px-5 pt-[calc(env(safe-area-inset-top)+76px)] pb-[calc(env(safe-area-inset-bottom)+40px)]">
       <TopBar>
-        <Link href="/" className="-ml-1.5 grid size-10 place-items-center rounded-full" aria-label="Back">
+        <Link href="/reading" className="-ml-1.5 grid size-10 place-items-center rounded-full" aria-label="Back">
           <ChevronLeftIcon className="size-5" />
         </Link>
         <h1 className="mr-auto font-serif text-lg font-semibold">Our book</h1>

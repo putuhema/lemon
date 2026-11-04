@@ -991,7 +991,7 @@ function Reader() {
           <div>
             <p className="text-3xl">🍋</p>
             <p className="mt-2 font-medium">{errorMsg}</p>
-            <Link href="/" className="mt-4 inline-block underline">
+            <Link href="/reading" className="mt-4 inline-block underline">
               Back to the shelf
             </Link>
           </div>
@@ -1081,7 +1081,7 @@ function Reader() {
               style={{ color: theme.fg }}
             >
               <Link
-                href="/"
+                href="/reading"
                 className="grid size-10 shrink-0 place-items-center rounded-full hover:bg-black/5"
                 aria-label="Back to shelf"
               >

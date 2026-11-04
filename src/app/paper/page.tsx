@@ -303,7 +303,7 @@ function PaperReader({ id }: { id: string }) {
         <div>
           <p className="text-4xl">📄</p>
           <p className="mt-3 font-semibold">Couldn’t open this paper.</p>
-          <Link href="/journals" className="mt-4 inline-block underline">
+          <Link href="/reading?tab=journals" className="mt-4 inline-block underline">
             Back to journals
           </Link>
         </div>
@@ -333,7 +333,7 @@ function PaperReader({ id }: { id: string }) {
       <header className="pointer-events-none fixed inset-x-0 top-0 z-30 px-3 pt-[calc(env(safe-area-inset-top)+8px)]">
         <div className={`pointer-events-auto mx-auto flex h-12 max-w-2xl items-center gap-1 rounded-full pr-1.5 pl-1.5 ${glass}`}>
           <Link
-            href="/journals"
+            href="/reading?tab=journals"
             onClick={() => saveNow()}
             aria-label="Back to journals"
             className="grid size-9 shrink-0 place-items-center rounded-full active:bg-ink/5"

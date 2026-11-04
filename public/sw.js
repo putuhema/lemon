@@ -13,7 +13,7 @@ const PAGES = `lemon-pages-${VERSION}`;
 const DATA = `lemon-data-${VERSION}`;
 const IMAGES = `lemon-images-${VERSION}`;
 const KEEP = [STATIC, PAGES, DATA, IMAGES, "lemon-books-v1", "lemon-share"];
-const PRECACHE = ["/", "/login", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
+const PRECACHE = ["/", "/reading", "/login", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 
 // Saved copies are per phone (one reader), so ignore Vary headers like "Accept, Prefer"
 const MATCH = { ignoreVary: true };
@@ -95,7 +95,7 @@ self.addEventListener("fetch", (event) => {
             new Response(file, { headers: { "x-file-name": encodeURIComponent(file.name || "book.epub") } }),
           );
         }
-        return Response.redirect("/?shared=1", 303);
+        return Response.redirect("/reading?shared=1", 303);
       })(),
     );
     return;
