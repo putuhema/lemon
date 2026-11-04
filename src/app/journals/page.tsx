@@ -12,6 +12,7 @@ import { haptic } from "@/lib/haptics";
 import { BotHead } from "@/components/BotHead";
 import { Sheet } from "@/components/Sheet";
 import { SettingsSheet } from "@/components/SettingsSheet";
+import { FridgeNote } from "@/components/FridgeNote";
 import { NotMember, Splash } from "@/components/Gate";
 import { Bar } from "@/components/ProgressBar";
 import { BookOpenTextIcon, FloatingNav, LibraryBigIcon, PlusIcon } from "@/components/Floating";
@@ -130,7 +131,11 @@ function Journals() {
         </p>
       )}
 
-      <div className="mt-2 flex items-baseline justify-between">
+      <div className="mb-8 pt-2">
+        <FridgeNote />
+      </div>
+
+      <div className="flex items-baseline justify-between">
         <h2 className="font-serif text-xl font-semibold">Our journals</h2>
         {papers && papers.length > 0 && (
           <span className="text-sm text-muted">

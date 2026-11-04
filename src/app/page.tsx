@@ -19,6 +19,7 @@ import { NotMember, Splash } from "@/components/Gate";
 import { Bar } from "@/components/ProgressBar";
 import { StreakCard } from "@/components/StreakCard";
 import { ContinueCard } from "@/components/ContinueCard";
+import { FridgeNote } from "@/components/FridgeNote";
 import { useStreak } from "@/lib/streak";
 import { BookOpenTextIcon, FloatingNav, LibraryBigIcon, NewspaperIcon, PlusIcon } from "@/components/Floating";
 
@@ -167,6 +168,10 @@ function Library() {
           <CloudOffIcon className="size-3.5" /> Offline
         </p>
       )}
+
+      <div className="mb-3 pt-2">
+        <FridgeNote />
+      </div>
 
       {continueBook && continueProg && (
         <ContinueCard
