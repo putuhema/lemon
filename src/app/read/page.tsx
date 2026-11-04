@@ -173,6 +173,8 @@ function Reader() {
   // The book is in the address (/read?b=…) so this page is static and opens offline
   const id = search.get("b") ?? "";
   const joinOnOpen = search.get("join") === "1";
+  // Open at a highlight (from "A moment from us" on Home)
+  const openAt = search.get("at");
   const {
     me,
     partner,
@@ -568,6 +570,7 @@ function Reader() {
         setToc((view.book.toc ?? []) as TocItem[]);
         // First time in this book: skip the cover, license and contents, start at chapter one.
         const start =
+          openAt ??
           (joinOnOpen && theirs?.cfi ? theirs.cfi : mine?.cfi) ??
           findStoryStart((view.book.toc ?? []) as TocItem[], b.data.title);
         await view.init({ lastLocation: start, showTextStart: !start });

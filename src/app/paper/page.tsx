@@ -45,11 +45,15 @@ export default function PaperPage() {
 
 /** A fresh reader for each paper (Next keeps visited pages alive, so state would carry over otherwise). */
 function ForPaper() {
-  const id = useSearchParams().get("p") ?? "";
-  return <PaperReader key={id} id={id} />;
+  const params = useSearchParams();
+  const id = params.get("p") ?? "";
+  // join=1: open at your partner's place. note=<id>: open at that highlight, with its thread.
+  const join = params.get("join") === "1";
+  const noteId = params.get("note");
+  return <PaperReader key={`${id}:${join}:${noteId}`} id={id} join={join} noteId={noteId} />;
 }
 
-function PaperReader({ id }: { id: string }) {
+function PaperReader({ id, join, noteId }: { id: string; join: boolean; noteId: string | null }) {
   const { me, partner, partnerActivity, setActivity, toast, colorOf, nameOf } = useLemon();
 
   const viewerRef = useRef<PaperViewerHandle>(null);
@@ -121,18 +125,29 @@ function PaperReader({ id }: { id: string }) {
       }
       const all = (pr.data ?? []) as PaperProgress[];
       const mine = all.find((x) => x.reader_id === me.id);
-      setPartnerProg(all.find((x) => x.reader_id !== me.id) ?? null);
-      if (mine) {
-        const start = { page: mine.page, fraction: mine.fraction };
-        placeRef.current = start;
-        maxRef.current = mine.max_fraction;
-        finishedRef.current = mine.finished_at;
-        setInitial(start);
-        setPlace(start);
-        setMaxFraction(mine.max_fraction);
-      }
+      const theirs = all.find((x) => x.reader_id !== me.id) ?? null;
+      setPartnerProg(theirs);
       const list = (n.data ?? []) as PaperNote[];
       setNotes(list);
+      if (mine) {
+        maxRef.current = mine.max_fraction;
+        finishedRef.current = mine.finished_at;
+        setMaxFraction(mine.max_fraction);
+      }
+      const target = noteId ? list.find((x) => x.id === noteId) : undefined;
+      const start = target
+        ? { page: target.page ?? 1, fraction: target.fraction }
+        : join && theirs
+          ? { page: theirs.page, fraction: theirs.fraction }
+          : mine
+            ? { page: mine.page, fraction: mine.fraction }
+            : null;
+      if (start) {
+        placeRef.current = start;
+        setInitial(start);
+        setPlace(start);
+      }
+      if (join && theirs && partner) toast(`On ${partner.name}’s page 💛`);
       if (list.length) {
         const r = await supabase.from("replies").select("*").in("annotation_id", list.map((x) => x.id)).order("created_at");
         if (!cancelled) setReplies((r.data ?? []) as Reply[]);
@@ -144,7 +159,16 @@ function PaperReader({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
+    // Only when the paper or the reader changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, me]);
+
+  // Opened at a highlight: show its thread once the paper is on screen
+  useEffect(() => {
+    if (status !== "ready" || !noteId) return;
+    const t = setTimeout(() => setOpenIds([noteId]), 700);
+    return () => clearTimeout(t);
+  }, [status, noteId]);
 
   // ---- Live: notes, replies, and your partner's place ---------------------------
   useEffect(() => {

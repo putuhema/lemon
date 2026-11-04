@@ -7,9 +7,11 @@ import { useStreak } from "@/lib/streak";
 import { NotMember, Splash } from "@/components/Gate";
 import { FridgeNote } from "@/components/FridgeNote";
 import { MonthCalendar } from "@/components/MonthCalendar";
+import { RightNow } from "@/components/RightNow";
+import { MomentFromUs } from "@/components/MomentFromUs";
 import { AppNav } from "@/components/AppNav";
 
-/** Home: the note on the fridge, and this month's reading together. */
+/** Home: the note on the fridge, your partner right now, this month's reading, and a moment from before. */
 export default function Home() {
   const { ready, me, partner, notMember } = useLemon();
   const offline = useOffline();
@@ -30,11 +32,19 @@ export default function Home() {
       </div>
 
       <div className="mt-4">
+        <RightNow />
+      </div>
+
+      <div className="mt-4">
         {streak && partner ? (
           <MonthCalendar streak={streak} me={me} partner={partner} />
         ) : (
           <div className="h-[430px] animate-pulse rounded-3xl bg-ink/5" />
         )}
+      </div>
+
+      <div className="mt-4">
+        <MomentFromUs />
       </div>
 
       <AppNav active="home" />
