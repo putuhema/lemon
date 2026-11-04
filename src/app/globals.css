@@ -125,25 +125,56 @@ textarea {
 .bot-bob {
   animation: bot-bob 2.4s ease-in-out infinite;
 }
-@keyframes bot-blink {
-  0%,
-  94%,
-  100% {
-    transform: scaleY(1);
+/* sleepy z's and love hearts drift up and fade */
+@keyframes bot-drift {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6);
   }
-  97% {
-    transform: scaleY(0.1);
+  20% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(40%, -160%) scale(1);
   }
 }
-.bot-blink {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: bot-blink 4.5s infinite;
+.bot-z,
+.bot-heart {
+  right: 0;
+  bottom: 0;
+  opacity: 0;
+  animation: bot-drift 2.6s ease-out infinite;
+}
+/* the reading bot's page turns over the spine */
+@keyframes bot-page {
+  80% {
+    transform: scaleX(-1);
+    opacity: 1;
+  }
+  to {
+    transform: scaleX(-1);
+    opacity: 0;
+  }
+}
+.bot-page {
+  transform-box: view-box;
+  transform-origin: 20px 0;
+  animation: bot-page 0.85s ease-in-out forwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .bot-bob,
-  .bot-blink {
+  .bot-z,
+  .bot-heart,
+  .bot-page {
     animation: none;
+  }
+  .bot-z,
+  .bot-heart {
+    opacity: 0.5;
+  }
+  .bot-page {
+    display: none;
   }
 }
 
