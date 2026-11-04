@@ -11,17 +11,16 @@ import { uploadBook, deleteBook, takeSharedFile, type UploadPreview } from "@/li
 import { downloadedBookIds, ensureDownloaded, forgetBookFile } from "@/lib/bookCache";
 import { isOffline, useOffline } from "@/lib/offline";
 import { CloudOffIcon } from "lucide-react";
-import { haptic, hapticsEnabled, setHapticsEnabled } from "@/lib/haptics";
-import { getThemePref, setThemePref, type ThemePref } from "@/lib/theme";
-import { pct } from "@/lib/format";
+import { haptic } from "@/lib/haptics";
 import { BotHead } from "@/components/BotHead";
-import { enablePush, hasPushSubscription, isIOS, isStandalone, pushSupported } from "@/lib/push";
 import { Sheet } from "@/components/Sheet";
+import { SettingsSheet } from "@/components/SettingsSheet";
+import { NotMember, Splash } from "@/components/Gate";
+import { Bar } from "@/components/ProgressBar";
 import { StreakCard } from "@/components/StreakCard";
 import { ContinueCard } from "@/components/ContinueCard";
 import { useStreak } from "@/lib/streak";
-import { BookOpenTextIcon, FloatingNav, LibraryBigIcon, PlusIcon } from "@/components/Floating";
-import { LemonMark } from "@/components/LemonMark";
+import { BookOpenTextIcon, FloatingNav, LibraryBigIcon, NewspaperIcon, PlusIcon } from "@/components/Floating";
 
 export default function Page() {
   return (
@@ -258,7 +257,8 @@ function Library() {
       <FloatingNav
         active="shelf"
         items={[
-          { id: "shelf", label: "Shelf", icon: LibraryBigIcon, href: "/" },
+          { id: "shelf", label: "Books", icon: LibraryBigIcon, href: "/" },
+          { id: "journals", label: "Journals", icon: NewspaperIcon, href: "/journals" },
           { id: "reading", label: "Reading", icon: BookOpenTextIcon, href: myLastBook ? `/read?b=${myLastBook}` : null },
           {
             id: "add",
@@ -389,18 +389,6 @@ function UploadingCard({ preview, progress }: { preview: UploadPreview; progress
   );
 }
 
-function Bar({ color, label, value }: { color: string; label: string; value?: number }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <BotHead color={color} size={20} label={label} />
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink/8">
-        <div className="h-full rounded-full" style={{ width: pct(value), background: color }} />
-      </div>
-      <span className="w-8 text-right text-[10px] tabular-nums text-muted">{value ? pct(value) : "–"}</span>
-    </div>
-  );
-}
-
 function Cover({ book, url }: { book: Book; url?: string }) {
   if (url)
     return (
@@ -427,123 +415,5 @@ function EmptyShelf({ onAdd }: { onAdd: () => void }) {
         Add a book
       </button>
     </div>
-  );
-}
-
-function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { me, toast } = useLemon();
-  const [pushOn, setPushOn] = useState<boolean | null>(null);
-  const [hapticsOn, setHapticsOn] = useState(true);
-  const [themePref, setThemePrefState] = useState<ThemePref>("system");
-
-  useEffect(() => {
-    if (!open) return;
-    hasPushSubscription().then(setPushOn);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading a saved setting when the sheet opens
-    setHapticsOn(hapticsEnabled());
-    setThemePrefState(getThemePref());
-  }, [open]);
-
-  const needsInstall = isIOS() && !isStandalone();
-
-  return (
-    <Sheet open={open} onClose={onClose} title={me?.name}>
-      <div className="space-y-2">
-        <div>
-          {needsInstall ? (
-            <p className="rounded-2xl bg-lemon/25 px-4 py-3.5 text-sm">
-              For notifications: <b>Share → Add to Home Screen</b>
-            </p>
-          ) : !pushSupported() ? (
-            <p className="text-sm text-muted">Notifications not supported</p>
-          ) : pushOn ? (
-            <p className="rounded-2xl bg-leaf/10 px-4 py-3.5 text-sm font-medium text-leaf">Notifications on ✓</p>
-          ) : (
-            <button
-              className="w-full rounded-2xl bg-lemon px-4 py-3.5 font-semibold text-on-lemon"
-              onClick={async () => {
-                try {
-                  await enablePush(me!.id);
-                  setPushOn(true);
-                  toast("Notifications on 🔔");
-                } catch (e) {
-                  toast((e as Error).message);
-                }
-              }}
-            >
-              Turn on notifications
-            </button>
-          )}
-        </div>
-        <div className="grid grid-cols-3 gap-1 rounded-2xl bg-ink/5 p-1 text-sm font-medium" role="radiogroup" aria-label="Appearance">
-          {(
-            [
-              ["system", "Auto"],
-              ["light", "Light"],
-              ["dark", "Dark"],
-            ] as const
-          ).map(([pref, label]) => (
-            <button
-              key={pref}
-              role="radio"
-              aria-checked={themePref === pref}
-              onClick={() => {
-                haptic("tick");
-                setThemePref(pref);
-                setThemePrefState(pref);
-              }}
-              className={`rounded-xl py-2.5 transition-colors ${themePref === pref ? "bg-paper text-ink" : "text-muted"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <label className="flex w-full items-center justify-between rounded-2xl bg-ink/5 px-4 py-3.5 font-medium">
-          Haptics
-          <input
-            type="checkbox"
-            // iPhone shows a native switch (and plays its own haptic when flipped)
-            {...{ switch: "" }}
-            checked={hapticsOn}
-            onChange={(e) => {
-              setHapticsEnabled(e.target.checked);
-              setHapticsOn(e.target.checked);
-              if (e.target.checked) haptic("tap");
-            }}
-            className="size-5 accent-[#E0AD00]"
-          />
-        </label>
-        <button
-          className="w-full rounded-2xl bg-ink/5 px-4 py-3.5 text-left font-medium"
-          onClick={() => supabase.auth.signOut()}
-        >
-          Sign out
-        </button>
-      </div>
-    </Sheet>
-  );
-}
-
-// Android already shows its own splash while the app starts, so this one stays a plain
-// background and only shows the lemon if loading takes a while (no second splash).
-function Splash() {
-  return (
-    <main className="grid min-h-dvh place-items-center">
-      <LemonMark className="splash-mark size-24" />
-    </main>
-  );
-}
-
-function NotMember() {
-  return (
-    <main className="grid min-h-dvh place-items-center px-8 text-center">
-      <div>
-        <p className="text-4xl">🍋</p>
-        <p className="mt-3 font-semibold">This account isn’t one of Lemon’s two readers.</p>
-        <button className="mt-4 underline" onClick={() => supabase.auth.signOut()}>
-          Sign out
-        </button>
-      </div>
-    </main>
   );
 }

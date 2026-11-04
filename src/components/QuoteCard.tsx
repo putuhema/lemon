@@ -7,6 +7,9 @@ import { haptic } from "@/lib/haptics";
 import { BotHead } from "./BotHead";
 import { Sheet } from "./Sheet";
 
+/** What the card names at the bottom: a book, or a journal paper. */
+type CardSource = Pick<Book, "title" | "author">;
+
 const W = 1080;
 const H = 1350;
 const INK = "#2E2A1F";
@@ -61,7 +64,7 @@ async function drawCard(opts: {
   note: string | null;
   noteBy: string;
   accent: string;
-  book: Book;
+  book: CardSource;
   bots: SVGSVGElement[];
 }) {
   const root = getComputedStyle(document.documentElement);
@@ -164,8 +167,8 @@ export function QuoteCard({
   partner,
   onClose,
 }: {
-  annotation: Annotation | null;
-  book: Book | null;
+  annotation: Pick<Annotation, "quote" | "note" | "reader_id"> | null;
+  book: CardSource | null;
   me: Reader;
   partner: Reader;
   onClose: () => void;

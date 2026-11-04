@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { isValidElement, type ReactNode } from "react";
 import { LayoutGroup, motion, MotionConfig, type Transition } from "motion/react";
-import { BookOpenTextIcon, LibraryBigIcon, PlusIcon, type LucideIcon } from "lucide-react";
+import { BookOpenTextIcon, LibraryBigIcon, NewspaperIcon, PlusIcon, type LucideIcon } from "lucide-react";
 import { glass } from "@/lib/glass";
 import { haptic } from "@/lib/haptics";
 
@@ -32,7 +32,7 @@ export function FloatingNav({ items, active }: { items: Item[]; active: string }
         <LayoutGroup>
           <nav aria-label="Navigation" className={`pointer-events-auto flex items-center rounded-full p-1 ${glass}`}>
             {items.map((item) => (
-              <NavItem key={item.id} item={item} active={active === item.id} />
+              <NavItem key={item.id} item={item} active={active === item.id} narrow={items.length > 4} />
             ))}
           </nav>
         </LayoutGroup>
@@ -41,7 +41,7 @@ export function FloatingNav({ items, active }: { items: Item[]; active: string }
   );
 }
 
-function NavItem({ item, active }: { item: Item; active: boolean }) {
+function NavItem({ item, active, narrow }: { item: Item; active: boolean; narrow: boolean }) {
   const Icon = item.icon;
   const busy = "busy" in item && item.busy;
   const disabled = "href" in item && !item.href;
@@ -69,7 +69,8 @@ function NavItem({ item, active }: { item: Item; active: boolean }) {
       <span className="relative text-[10.5px] leading-none">{item.label}</span>
     </>
   );
-  const className = `relative flex h-12 w-[72px] flex-col items-center justify-center gap-1 rounded-full transition-colors ${
+  // Five tabs still fit a small phone (375px) with room to spare
+  const className = `relative flex h-12 ${narrow ? "w-16" : "w-[72px]"} flex-col items-center justify-center gap-1 rounded-full transition-colors ${
     active ? "text-ink" : "text-muted hover:text-ink"
   } ${disabled ? "pointer-events-none opacity-40" : ""}`;
 
@@ -94,4 +95,4 @@ function NavItem({ item, active }: { item: Item; active: boolean }) {
   );
 }
 
-export { BookOpenTextIcon, LibraryBigIcon, PlusIcon };
+export { BookOpenTextIcon, LibraryBigIcon, NewspaperIcon, PlusIcon };

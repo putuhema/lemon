@@ -24,8 +24,14 @@ async function shrinkCover(blob: Blob): Promise<Blob> {
 }
 
 /** Upload to a signed URL with real progress (the Supabase client doesn't report progress). */
-async function uploadWithProgress(path: string, file: Blob, contentType: string, onProgress?: (f: number) => void) {
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+export async function uploadWithProgress(
+  path: string,
+  file: Blob,
+  contentType: string,
+  onProgress?: (f: number) => void,
+  bucket = BUCKET,
+) {
+  const { data, error } = await supabase.storage.from(bucket).createSignedUploadUrl(path);
   if (error || !data) throw new Error(`Upload failed: ${error?.message ?? "no upload link"}`);
   const { data: auth } = await supabase.auth.getSession();
   await new Promise<void>((resolve, reject) => {

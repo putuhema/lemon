@@ -185,3 +185,155 @@ textarea {
     transform: translateX(0);
   }
 }
+
+/* ---------- Journals: pdf.js text layer (transparent, selectable text over each PDF page) ---------- */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 2;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.textLayer .markedContent {
+  display: contents;
+}
+.textLayer ::selection {
+  background: rgb(245 203 46 / 0.45);
+}
+.textLayer br::selection {
+  background: transparent;
+}
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+.textLayer.selecting .endOfContent {
+  top: 0;
+}
+
+/* ---------- Journals: saved web articles ---------- */
+.paper-article {
+  font-family: var(--font-serif);
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+.paper-article > * + * {
+  margin-top: 1em;
+}
+.paper-article :is(h2, h3, h4) {
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.6em;
+}
+.paper-article h2 {
+  font-size: 1.3em;
+}
+.paper-article h3 {
+  font-size: 1.12em;
+}
+.paper-article h4 {
+  font-size: 1em;
+  font-style: italic;
+}
+.paper-article a {
+  text-decoration: underline;
+  text-decoration-color: var(--color-lemon-deep);
+  text-underline-offset: 3px;
+}
+.paper-article :is(ul, ol) {
+  padding-left: 1.3em;
+}
+.paper-article ul {
+  list-style: disc;
+}
+.paper-article ol {
+  list-style: decimal;
+}
+.paper-article li + li {
+  margin-top: 0.35em;
+}
+.paper-article blockquote {
+  border-left: 3px solid var(--color-lemon);
+  padding-left: 1em;
+  font-style: italic;
+}
+.paper-article img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.paper-article figcaption {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 0.4em;
+}
+.paper-article :is(pre, code) {
+  font-size: 0.85em;
+}
+.paper-article pre {
+  overflow-x: auto;
+  background: rgb(127 127 127 / 0.1);
+  padding: 0.8em;
+  border-radius: 12px;
+}
+.paper-article table {
+  display: block;
+  overflow-x: auto;
+  font-family: var(--font-sans);
+  font-size: 0.8em;
+  border-collapse: collapse;
+}
+.paper-article :is(th, td) {
+  border: 1px solid rgb(127 127 127 / 0.25);
+  padding: 0.3em 0.5em;
+}
+.paper-article ::selection {
+  background: rgb(245 203 46 / 0.45);
+}
+.paper-hl {
+  background: var(--hl);
+  color: inherit;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.paper-hl[data-badge]::after {
+  content: attr(data-badge);
+  font-size: 0.7em;
+  margin-left: 0.15em;
+  vertical-align: super;
+  line-height: 0;
+  user-select: none;
+}
