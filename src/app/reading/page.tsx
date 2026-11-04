@@ -81,7 +81,7 @@ function Reading() {
   };
 
   return (
-    <main ref={mainRef} className="mx-auto min-h-dvh max-w-2xl px-5 pt-[calc(env(safe-area-inset-top)+20px)] pb-[calc(env(safe-area-inset-bottom)+104px)]">
+    <main ref={mainRef} className="mx-auto min-h-dvh overflow-x-clip max-w-2xl px-5 pt-[calc(env(safe-area-inset-top)+20px)] pb-[calc(env(safe-area-inset-bottom)+104px)]">
       {offline && (
         <p className="mb-3 flex items-center justify-center gap-1.5 text-xs font-medium text-muted" role="status">
           <CloudOffIcon className="size-3.5" /> Offline
